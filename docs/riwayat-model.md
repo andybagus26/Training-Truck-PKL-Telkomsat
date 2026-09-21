@@ -1,5 +1,7 @@
 # Riwayat model v1 → v4
 
+Daftar sumber data tiap versi beserta link ada di [`sumber-dataset.md`](sumber-dataset.md).
+
 Catatan perkembangan model: apa yang ditambahkan di tiap versi, alasannya, dan hasil pengujiannya.
 Semua versi memakai arsitektur yang sama (YOLOv9-t, input 320×320, 3 class: `truck`, `full_load`, `empty_load`).
 
