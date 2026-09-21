@@ -37,10 +37,14 @@ Pengujian pada video yang tidak dipakai saat training:
 
 ```
 scripts/          Script training, pembuatan dataset, pelabelan, dan evaluasi
-notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX)
+notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX) — model v1
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
+docs/             Riwayat perkembangan model dan daftar sumber dataset
 ```
+
+- [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v4 beserta alasan tiap penambahan data
+- [`docs/sumber-dataset.md`](docs/sumber-dataset.md) — daftar lengkap sumber data tiap versi, dengan link
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
 dan bisa dibuat ulang dengan script di bawah.
@@ -142,3 +146,6 @@ yang berada terlalu lama di area loading.
 Dataset publik dipakai untuk menambah variasi truk, sekaligus sebagai contoh negatif (excavator dan wheel
 loader) agar tidak ikut terdeteksi sebagai truk. Karena sebagian data berasal dari video publik, model ini
 ditujukan untuk prototipe dan penggunaan internal.
+
+Daftar sumber per versi, lengkap dengan link dan jumlah gambar yang terpakai, ada di
+[`docs/sumber-dataset.md`](docs/sumber-dataset.md).
