@@ -1,7 +1,7 @@
 mqtt:
   enabled: false
 
-# Detector native di macOS (ONNX Runtime + CoreML) — jalankan dulu di host:
+# Detector native di macOS (ONNX Runtime + CoreML) — jalan dulu di host:
 #   otomatis via LaunchAgent com.frigate.apple-silicon-detector (log: ~/frigate/logs/apple_silicon_detector.log)
 #   manual: cd ~/frigate/apple-silicon-detector && make run PYTHON=python3
 detectors:
@@ -37,7 +37,7 @@ objects:
       min_score: 0.5
       threshold: 0.6
 
-# Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak" -> sempat 36 GB).
+# Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak").
 # Hanya klip saat ada objek terdeteksi (alert/detection), disimpan 3 hari lalu terhapus otomatis.
 record:
   enabled: true
@@ -135,7 +135,7 @@ cameras:
       enabled: true
       max_disappeared: 10
       stationary:
-        # Harus > loitering_time x fps (lihat cat775_demo)
+        # Harus > loitering_time x fps
         threshold: 150
     record:
       enabled: true
