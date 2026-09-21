@@ -1,0 +1,19 @@
+# Kredensial
+.env
+
+# Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Data & hasil training (besar, dibuat ulang lewat script)
+datasets/
+runs/
+weights/
+logs/
+export/
+
+# Media
+*.mp4
+*.mov
+*.avi

@@ -1,0 +1,195 @@
+mqtt:
+  enabled: false
+
+# Detector native di macOS (ONNX Runtime + CoreML) — jalankan dulu di host:
+#   otomatis via LaunchAgent com.frigate.apple-silicon-detector (log: ~/frigate/logs/apple_silicon_detector.log)
+#   manual: cd ~/frigate/apple-silicon-detector && make run PYTHON=python3
+detectors:
+  apple-silicon:
+    type: zmq
+    endpoint: tcp://host.docker.internal:5555
+
+# YOLOv9-t hasil training (Training Truck Telkomsat), 320x320, RGB 0-1
+# v4 = v3 + frame malam/hauling (YouTube, direview manual) + augmentasi malam sintetis -> fine-tune dari v3.
+# Rollback: /models/mining_truck_yolov9t_320_v3.onnx (v3)
+model:
+  model_type: yolo-generic
+  width: 320
+  height: 320
+  input_tensor: nchw
+  input_dtype: float
+  path: /models/mining_truck_yolov9t_320_v4.onnx
+  labelmap_path: /models/labelmap.txt
+
+objects:
+  track:
+    - truck
+    - full_load
+    - empty_load
+  filters:
+    truck:
+      min_score: 0.45
+      threshold: 0.6
+    full_load:
+      min_score: 0.5
+      threshold: 0.6
+    empty_load:
+      min_score: 0.5
+      threshold: 0.6
+
+# Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak" -> sempat 36 GB).
+# Hanya klip saat ada objek terdeteksi (alert/detection), disimpan 3 hari lalu terhapus otomatis.
+record:
+  enabled: true
+  continuous:
+    days: 0
+  motion:
+    days: 0
+  alerts:
+    retain:
+      days: 3
+      mode: active_objects
+  detections:
+    retain:
+      days: 3
+      mode: active_objects
+
+cameras:
+  # Simulasi CCTV statis: 43 gambar test dataset (tidak dipakai saat training), tiap gambar 4 detik.
+  site_cctv_test:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/site_cctv_test.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      enabled: true
+      # Gambar berganti mendadak; lepas objek lama setelah 1 detik (default 5 detik) supaya tidak ada box "hantu"
+      max_disappeared: 5
+    record:
+      enabled: true
+    motion:
+      # Pergantian gambar = perubahan seluruh frame. Default 0.8 menganggapnya kilat & melewatkan deteksi.
+      # Untuk kamera CCTV sungguhan, hapus baris ini (pakai default).
+      lightning_threshold: 1.0
+
+  # Demo: "Cat 775 Hauling Shot Rock To The Primary Crusher" (YouTube K6zCCLLKbKk, © Eat Sleep Dig Repeat — demo internal saja).
+  # Hanya segmen kamera diam: excavator memuat Cat 775 (0-31 s); frame pertama ditahan 2 s untuk kalibrasi motion.
+  cat775_demo:
+    # Dinonaktifkan: isinya sudah termasuk di cat775_full; mengurangi beban detektor (5 kamera -> ~98% sibuk).
+    enabled: false
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/cat775_crusher_demo.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      enabled: true
+      # Ada potongan saat video di-loop; lepas objek lama setelah 2 detik
+      max_disappeared: 10
+      stationary:
+        # Harus > loitering_time x fps (15 s x 5 = 75 frame). Frigate mengabaikan objek yang sudah
+        # "diam" untuk review, jadi tanpa ini truk yang parkir dimuat tidak pernah memicu alert.
+        threshold: 150
+    record:
+      enabled: true
+    motion:
+      # Potongan saat loop mengubah seluruh frame; jangan dianggap kilat
+      lightning_threshold: 1.0
+    objects:
+      filters:
+        truck:
+          # Pengaman: truk asli di sudut kamera ini ~22% frame; box > 60% frame hampir pasti salah.
+          max_area: 0.6
+    # Loitering: truk dianggap "di area loading" setelah >= loitering_time detik di dalam zone
+    # (dievaluasi pada titik bawah-tengah box). 15 s untuk demo; di site nyata mis. 300-600 s.
+    zones:
+      area_loading:
+        friendly_name: Area Loading
+        coordinates: 0.0,0.6,0.6,0.6,0.6,1.0,0.0,1.0
+        objects:
+          - truck
+        loitering_time: 15
+    review:
+      alerts:
+        labels:
+          - truck
+        required_zones:
+          - area_loading
+
+  # Video Cat 775 LENGKAP (130 s, termasuk bagian kamera bergerak/drone), tanpa filter khusus kamera
+  # -> untuk melihat kemampuan model apa adanya. Catatan: detik 31-130 ikut dipakai training v3.
+  cat775_full:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/cat775_full.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      enabled: true
+      max_disappeared: 10
+      stationary:
+        # Harus > loitering_time x fps (lihat cat775_demo)
+        threshold: 150
+    record:
+      enabled: true
+    motion:
+      # Banyak pergantian adegan & kamera bergerak; jangan dianggap kilat
+      lightning_threshold: 1.0
+    # Zone sama dengan cat775_demo: berlaku di adegan loading (detik 0-31, framing identik).
+    zones:
+      area_loading:
+        friendly_name: Area Loading
+        coordinates: 0.0,0.6,0.6,0.6,0.6,1.0,0.0,1.0
+        objects:
+          - truck
+        loitering_time: 15
+    review:
+      alerts:
+        labels:
+          - truck
+        required_zones:
+          - area_loading
+
+  # Video uji dari user (~/Downloads, rekaman layar preview Shutterstock). Bingkai hitam rekaman layar dipotong
+  # (crop 3600x2028 dari y=194), di-scale ke 1280x720 @15 fps. Tidak pernah dipakai training.
+  truck_lewat:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/truck_lewat.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
+    motion:
+      # Kontrol player (rekaman layar) di tengah bawah; progress bar-nya bergerak -> abaikan sebagai gerakan
+      mask:
+        - 0.36,0.92,0.64,0.92,0.64,1.0,0.36,1.0
+
+  truck_malam:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/truck_malam.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
+version: 0.17-0

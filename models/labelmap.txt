@@ -1,0 +1,3 @@
+0 truck
+1 full_load
+2 empty_load

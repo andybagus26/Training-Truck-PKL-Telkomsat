@@ -1,0 +1,24 @@
+diff --git a/detector/model_util.py b/detector/model_util.py
+index 97c949a..24018f1 100644
+--- a/detector/model_util.py
++++ b/detector/model_util.py
+@@ -200,8 +200,17 @@ def __post_process_nms_yolo(predictions: np.ndarray, width, height) -> np.ndarra
+     boxes_xyxy[:, 3] = boxes[:, 1] + boxes[:, 3] / 2
+     boxes = boxes_xyxy
+ 
+-    # run NMS
+-    indices = cv2.dnn.NMSBoxes(boxes, scores, score_threshold=0.4, nms_threshold=0.4)
++    # run NMS per class; cv2 expects boxes as (x, y, w, h), not (x1, y1, x2, y2).
++    # Class-agnostic NMS on xyxy suppressed nested boxes of other classes (e.g. a load box inside a truck box).
++    boxes_xywh = np.column_stack(
++        (boxes[:, 0], boxes[:, 1], boxes[:, 2] - boxes[:, 0], boxes[:, 3] - boxes[:, 1])
++    )
++    indices = np.array(
++        cv2.dnn.NMSBoxesBatched(
++            boxes_xywh, scores, class_ids, score_threshold=0.4, nms_threshold=0.4
++        ),
++        dtype=int,
++    ).flatten()
+     detections = np.zeros((20, 6), np.float32)
+     for i, (bbox, confidence, class_id) in enumerate(
+         zip(boxes[indices], scores[indices], class_ids[indices])
