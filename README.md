@@ -37,10 +37,14 @@ Pengujian pada video yang tidak dipakai saat training:
 
 ```
 scripts/          Script training, pembuatan dataset, pelabelan, dan evaluasi
-notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX)
+notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX) — model v1
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
+docs/             Riwayat perkembangan model v1 sampai v4
 ```
+
+Perkembangan model dari versi ke versi, beserta alasan tiap penambahan data, ada di
+[`docs/riwayat-model.md`](docs/riwayat-model.md).
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
 dan bisa dibuat ulang dengan script di bawah.
