@@ -7,14 +7,15 @@ Semua versi memakai arsitektur yang sama (YOLOv9-t, input 320×320, 3 class: `tr
 
 ## Ringkasan
 
-| | v1 | v2 | v3 | v4 |
-|---|---|---|---|---|
-| Gambar unik | 430 | 3.085 | 3.283 | 3.375 |
-| Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 |
-| Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 |
-| Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 |
-| Video loading quarry: frame dengan truk | 20/24* | 5/24 | 22/24 | 24/24 |
-| Video malam: frame dengan truk | — | — | 1/24 | 24/24 |
+| | v1 | v2 | v3 | v4 | v5 |
+|---|---|---|---|---|---|
+| Gambar unik | 430 | 3.085 | 3.283 | 3.375 | 3.375 |
+| Class | 3 | 3 | 3 | 3 | 4 |
+| Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 |
+| Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 | 0.805 |
+| Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 | 0.995 |
+| Video loading quarry: frame dengan truk | 20/24* | 5/24 | 22/24 | 24/24 | 24/24 |
+| Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 |
 
 \* v1 mendeteksi truk di 20 frame, tetapi disertai 26 kotak salah seukuran frame penuh.
 
@@ -135,3 +136,40 @@ yang dituju, bukan penambahan data publik.
 - Test set site asli (43 gambar) tidak berubah sejak v1, sehingga angkanya bisa dibandingkan antarversi.
 - Label muatan pada dataset rf100 berasal dari prediksi model v1, bukan pemeriksaan manual, sehingga
   angka `full_load`/`empty_load` pada test rf100 perlu dibaca dengan hati-hati.
+
+---
+
+## v5 — menambah class excavator
+
+**Kebutuhan baru:** model harus mendeteksi truk sekaligus excavator. Sampai v4, excavator justru sengaja
+dibiarkan tanpa label sebagai contoh negatif, jadi label excavator harus ditambahkan ke seluruh dataset,
+bukan sekadar menambah data baru.
+
+**Langkahnya:**
+
+1. Class `EXCAVATORS` pada dataset rf100 (1.475 kotak) yang selama ini dibuang, dihidupkan kembali.
+2. Dilatih model sementara di data rf100 saja (20 epoch) sampai bisa mengenali excavator
+   (mAP50 0.816), lalu dipakai untuk mengusulkan kotak pada 720 gambar site dan video
+   (`scripts/propose_excavator.py`).
+3. Dari 97 gambar berusulan, **48 diterima** setelah diperiksa manual. Sisanya ditolak karena kotaknya
+   ikut menutupi truk, atau salah objek — misalnya bak truk yang sedang terangkat dikira excavator.
+4. Kotak "bukan truk" dari pemeriksaan v3/v4 diperiksa ulang: dari 115 kotak, **55 ternyata excavator**;
+   sisanya wheel loader yang memang tidak perlu label.
+5. 32 gambar yang excavator-nya tidak bisa dikotaki dengan baik dikeluarkan dari training, agar model
+   tidak belajar bahwa excavator adalah latar belakang.
+
+Total 2.208 kotak excavator di data training (termasuk salinan dan versi malam).
+
+**Training:** fine-tune dari model sementara, 40 epoch, lr 0.0008.
+
+**Hasil (test set gabungan 187 gambar):**
+
+| Class | v4 mAP50 | v5 mAP50 |
+|---|---|---|
+| truck | 0.867 | **0.915** |
+| full_load | 0.930 | **0.942** |
+| empty_load | 0.855 | 0.855 |
+| excavator | — | **0.851** |
+
+Deteksi truk justru naik karena excavator tidak lagi salah terdeteksi sebagai truk. Pada video malam,
+excavator yang sebelumnya dihitung sebagai truk kini dikenali dengan benar (85–88% di Frigate).

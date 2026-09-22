@@ -11,6 +11,7 @@ masuk ke dataset akhir (setelah pemeriksaan manual).
 | v2 | Roboflow 100 — excavators | 2.655 | 3.085 |
 | v3 | 6 video publik (adegan loading) | 198 | 3.283 |
 | v4 | 5 video publik (malam & hauling) | 92 | 3.375 |
+| v5 | tidak ada gambar baru — label excavator ditambahkan pada data yang sudah ada | 0 | 3.375 |
 
 Selain itu, v4 memakai 854 gambar malam sintetis yang dibuat dari gambar di atas
 (`scripts/night_aug.py`), jadi bukan data baru.
@@ -78,6 +79,15 @@ frame; hanya bagian lain video tersebut yang masuk data training.
 
 Frame dari video publik dipakai untuk prototipe dan penggunaan internal. Hak cipta video tetap pada
 kanal masing-masing, dan frame-nya tidak disertakan di repositori ini.
+
+## v5 — label excavator
+
+Tidak ada gambar baru. Label `excavator` berasal dari dua sumber:
+
+- **Anotasi bawaan rf100** (class `EXCAVATORS`, 1.475 kotak) yang pada v2–v4 sengaja dibuang agar
+  excavator menjadi contoh negatif.
+- **Review manual** pada gambar site dan frame video: 49 kotak dari usulan model sementara, ditambah
+  55 kotak hasil pemeriksaan ulang kotak "bukan truk" dari review v3/v4.
 
 ## Video untuk pengujian (tidak dipakai training)
 

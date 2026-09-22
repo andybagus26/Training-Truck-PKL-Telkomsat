@@ -10,23 +10,27 @@ detectors:
     endpoint: tcp://host.docker.internal:5555
 
 # YOLOv9-t hasil training (Training Truck Telkomsat), 320x320, RGB 0-1
-# v4 = v3 + frame malam/hauling (YouTube, direview manual) + augmentasi malam sintetis -> fine-tune dari v3.
-# Rollback: /models/mining_truck_yolov9t_320_v3.onnx (v3)
+# v5 = v4 + class excavator (label rf100 + review manual frame YouTube) -> fine-tune dari v4.
+# Rollback: /models/mining_truck_yolov9t_320_v4.onnx (v4, 3 class -> labelmap.txt) atau _v3.onnx
 model:
   model_type: yolo-generic
   width: 320
   height: 320
   input_tensor: nchw
   input_dtype: float
-  path: /models/mining_truck_yolov9t_320_v4.onnx
-  labelmap_path: /models/labelmap.txt
+  path: /models/mining_truck_yolov9t_320_v5.onnx
+  labelmap_path: /models/labelmap_v5.txt
 
 objects:
   track:
     - truck
     - full_load
     - empty_load
+    - excavator
   filters:
+    excavator:
+      min_score: 0.5
+      threshold: 0.6
     truck:
       min_score: 0.45
       threshold: 0.6

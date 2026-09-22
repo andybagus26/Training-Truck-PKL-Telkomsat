@@ -1,7 +1,8 @@
 # Deteksi Truk Tambang dengan YOLOv9 + Frigate NVR
 
-Model deteksi objek untuk memantau truk tambang dari kamera CCTV: mendeteksi truk dan status muatannya
-(bermuatan / kosong), lalu dijalankan di [Frigate NVR](https://frigate.video) sebagai custom detector.
+Model deteksi objek untuk memantau aktivitas tambang dari kamera CCTV: mendeteksi truk beserta status
+muatannya (bermuatan / kosong) dan excavator, lalu dijalankan di [Frigate NVR](https://frigate.video)
+sebagai custom detector.
 
 Model dilatih di Mac (Apple Silicon, MPS) dan dijalankan dengan ONNX Runtime + CoreML.
 
@@ -11,27 +12,30 @@ Model dilatih di Mac (Apple Silicon, MPS) dan dijalankan dengan ONNX Runtime + C
 |---|---|
 | Arsitektur | YOLOv9-t (Ultralytics 8.4), ~2 juta parameter |
 | Input | 320×320, NCHW, RGB, nilai 0–1 |
-| Output | `[1, 7, 2100]` — `cx, cy, w, h` (piksel) + 3 skor class, tanpa NMS |
-| Class | `truck`, `full_load`, `empty_load` |
+| Output | `[1, 8, 2100]` — `cx, cy, w, h` (piksel) + 4 skor class, tanpa NMS |
+| Class | `truck`, `full_load`, `empty_load`, `excavator` |
 | Kecepatan | ~2 ms/gambar (CoreML, M1 Pro); ~14 ms per permintaan lewat Frigate |
 
 Model siap pakai ada di `models/`.
 
 ## Hasil
 
-| Pengujian | mAP50 | mAP50-95 |
-|---|---|---|
-| Test set site asli (43 gambar) | 0.995 | 0.845 |
-| Test set site asli versi malam (sintetis) | 0.995 | 0.817 |
-| Test set tambang lain (rf100, class `truck`) | 0.805 | 0.606 |
+Test set gabungan (187 gambar: 43 dari site asli + 144 dari tambang lain):
 
-Pengujian pada video yang tidak dipakai saat training:
+| Class | P | R | mAP50 | mAP50-95 |
+|---|---|---|---|---|
+| truck | 0.976 | 0.720 | 0.915 | 0.741 |
+| full_load | 0.993 | 0.891 | 0.942 | 0.745 |
+| empty_load | 0.957 | 0.857 | 0.855 | 0.721 |
+| excavator | 0.906 | 0.789 | 0.851 | 0.659 |
 
-| Video | Truk terdeteksi | Muatan terdeteksi |
-|---|---|---|
-| Loading di quarry (kamera statis) | 24/24 frame | 22/24 frame |
-| Operasi malam hari | 24/24 frame | — |
-| Truk melintas di jalan hauling | 22/24 frame | 0/24 frame |
+Pengujian pada video yang tidak dipakai saat training (24 frame per video):
+
+| Video | truck | excavator | muatan |
+|---|---|---|---|
+| Loading di quarry (kamera statis) | 24 | 18 | 23 |
+| Operasi malam hari | 26 | 24 | — |
+| Truk melintas di jalan hauling | 31 | — | 0 |
 
 ## Struktur
 
@@ -91,11 +95,11 @@ model:
   height: 320
   input_tensor: nchw
   input_dtype: float
-  path: /models/mining_truck_yolov9t_320_v4.onnx
-  labelmap_path: /models/labelmap.txt
+  path: /models/mining_truck_yolov9t_320_v5.onnx
+  labelmap_path: /models/labelmap_v5.txt
 
 objects:
-  track: [truck, full_load, empty_load]
+  track: [truck, full_load, empty_load, excavator]
 ```
 
 Untuk Mac, deteksi dijalankan di host dengan
@@ -131,11 +135,13 @@ yang berada terlalu lama di area loading.
 - Status muatan paling andal bila bak terlihat dari atas atau samping-atas. Dari sudut rendah, atau untuk
   material dengan tampilan sangat berbeda, sering tidak terdeteksi.
 - Class `empty_load` paling lemah karena contohnya paling sedikit (102 kotak).
+- Wheel loader tidak dilabeli sebagai class tersendiri; mesin ini sengaja dijadikan contoh negatif agar
+  tidak terdeteksi sebagai truk maupun excavator.
 - Truk yang sedang menumpahkan muatan (bak terangkat) belum terdeteksi dengan baik.
 
 ## Dataset
 
-3.375 gambar unik:
+3.375 gambar unik (label excavator memakai anotasi bawaan rf100 ditambah hasil review manual):
 
 | Sumber | Gambar | Lisensi |
 |---|---|---|
