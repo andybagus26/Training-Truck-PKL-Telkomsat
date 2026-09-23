@@ -5,6 +5,7 @@
 .venv/
 __pycache__/
 *.pyc
+.DS_Store
 
 # Data & hasil training (besar, dibuat ulang lewat script)
 datasets/
