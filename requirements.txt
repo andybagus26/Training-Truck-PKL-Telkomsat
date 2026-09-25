@@ -14,3 +14,8 @@ python-dotenv==1.2.3
 yt-dlp==2026.8.19
 jupyter==1.1.1
 ipykernel==7.3.0
+
+# Backend API
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+httpx==0.28.1

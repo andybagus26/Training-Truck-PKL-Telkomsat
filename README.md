@@ -46,11 +46,13 @@ models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
 docs/             Riwayat model, sumber dataset, dan grafik hasil training
 dataset-v5-labels/  Anotasi lengkap dataset v5 (tanpa gambar) + panduan membangun ulang
+backend/          API FastAPI yang menyajikan data deteksi Frigate ke sistem lain
 ```
 
 - [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v5 beserta alasan tiap penambahan data
 - [`docs/sumber-dataset.md`](docs/sumber-dataset.md) — daftar lengkap sumber data tiap versi, dengan link
 - [`docs/hasil-training.md`](docs/hasil-training.md) — grafik training, confusion matrix, dan contoh prediksi
+- [`backend/README.md`](backend/README.md) — daftar endpoint API dan cara menjalankannya
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
 dan bisa dibuat ulang dengan script di bawah. Anotasinya sendiri tersedia lengkap di
@@ -123,6 +125,21 @@ dalam kotak truk ikut terhapus.
 
 Konfigurasi di `frigate/config.yml` juga berisi contoh zone dengan `loitering_time`, untuk menandai truk
 yang berada terlalu lama di area loading.
+
+## API untuk sistem lain
+
+Folder [`backend/`](backend/) berisi API FastAPI yang mengambil data deteksi dari Frigate dan
+menyajikannya kembali dalam bentuk yang lebih rapi, sehingga dashboard atau sistem lain tidak perlu
+berhubungan langsung dengan Frigate.
+
+```bash
+.venv/bin/uvicorn backend.app.main:app --port 8000
+# dokumentasi interaktif: http://localhost:8000/docs
+```
+
+Endpoint utama: `/detections` (dengan penyaringan kamera, label, waktu, dan skor), `/summary`,
+`/cameras`, `/stats`, serta endpoint gambar `/detections/{id}/snapshot` dan
+`/cameras/{camera}/latest`.
 
 ## Catatan penerapan
 
