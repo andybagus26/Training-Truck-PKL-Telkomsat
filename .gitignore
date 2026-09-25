@@ -22,3 +22,6 @@ export/
 # Detector Neural Engine untuk Frigate (clone dari github.com/frigate-nvr/apple-silicon-detector,
 # bukan bagian dari proyek ini, venv-nya sendiri sudah tercakup oleh .venv/ di atas)
 apple-silicon-detector/
+
+# Dashboard visual (lokal, tidak ikut ter-commit)
+Dashboard/
