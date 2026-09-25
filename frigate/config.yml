@@ -1,7 +1,7 @@
 mqtt:
   enabled: false
 
-# Detector native di macOS (ONNX Runtime + CoreML) — jalan dulu di host:
+# Detector native di macOS (ONNX Runtime + CoreML) — jalankan dulu di host:
 #   otomatis via LaunchAgent com.frigate.apple-silicon-detector (log: ~/frigate/logs/apple_silicon_detector.log)
 #   manual: cd ~/frigate/apple-silicon-detector && make run PYTHON=python3
 detectors:
@@ -41,7 +41,7 @@ objects:
       min_score: 0.5
       threshold: 0.6
 
-# Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak").
+# Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak" -> sempat 36 GB).
 # Hanya klip saat ada objek terdeteksi (alert/detection), disimpan 3 hari lalu terhapus otomatis.
 record:
   enabled: true
@@ -139,7 +139,7 @@ cameras:
       enabled: true
       max_disappeared: 10
       stationary:
-        # Harus > loitering_time x fps
+        # Harus > loitering_time x fps (lihat cat775_demo)
         threshold: 150
     record:
       enabled: true
@@ -181,6 +181,23 @@ cameras:
       # Kontrol player (rekaman layar) di tengah bawah; progress bar-nya bergerak -> abaikan sebagai gerakan
       mask:
         - 0.36,0.92,0.64,0.92,0.64,1.0,0.36,1.0
+
+  # Excavator: CAT 6060 face shovel memuat truk CAT 793D (YouTube vLNayfMsNoI, © Awesome Earthmovers —
+  # demo internal). Kamera benar-benar diam, jadi pakai pengaturan motion default seperti CCTV sungguhan.
+  excavator_shovel:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/excavator_shovel.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
 
   truck_malam:
     ffmpeg:
