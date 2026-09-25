@@ -1,0 +1,128 @@
+mqtt:
+  enabled: false
+
+# ─── DETECTOR ─────────────────────────────────────────────────────────────
+# Windows: uses Frigate's built-in ONNX Runtime CPU detector.
+# No need for apple-silicon-detector like on Mac — simpler setup!
+# Have an NVIDIA GPU? Change to: type: tensorrt
+detectors:
+  onnx_cpu:
+    type: onnx
+
+# ─── FFMPEG (Hardware Acceleration) ────────────────────────────────────────
+# VAAPI helps decode video using the AMD Radeon 780M iGPU, reducing CPU load.
+# If errors occur or it is not detected in WSL, simply remove this block — it will fall back to software decode automatically.
+ffmpeg:
+  hwaccel_args: preset-vaapi
+
+# ─── MODEL ────────────────────────────────────────────────────────────────
+model:
+  model_type: yolo-generic
+  width: 320
+  height: 320
+  input_tensor: nchw
+  input_dtype: float
+  path: /models/mining_truck_yolov9t_320_v5.onnx
+  labelmap_path: /models/labelmap_v5.txt
+
+# ─── OBJECTS ──────────────────────────────────────────────────────────────
+objects:
+  track:
+    - truck
+    - full_load
+    - empty_load
+    - excavator
+  filters:
+    excavator:
+      min_score: 0.5
+      threshold: 0.6
+    truck:
+      min_score: 0.45
+      threshold: 0.6
+    full_load:
+      min_score: 0.5
+      threshold: 0.6
+    empty_load:
+      min_score: 0.5
+      threshold: 0.6
+
+# ─── RECORDING ────────────────────────────────────────────────────────────
+record:
+  enabled: true
+  continuous:
+    days: 0
+  motion:
+    days: 0
+  alerts:
+    retain:
+      days: 3
+      mode: active_objects
+  detections:
+    retain:
+      days: 3
+      mode: active_objects
+
+# ─── CAMERAS ──────────────────────────────────────────────────────────────
+cameras:
+  truck_cam:
+    ffmpeg:
+      inputs:
+        - path: /config/cctv_short.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
+    zones:
+      area_loading:
+        friendly_name: Area Loading
+        coordinates: 0.0,0.6,0.6,0.6,0.6,1.0,0.0,1.0
+        objects:
+          - truck
+        loitering_time: 15
+    review:
+      alerts:
+        labels:
+          - truck
+        required_zones:
+          - area_loading
+
+  truck_cam_3:
+    ffmpeg:
+      inputs:
+        - path: /config/cctv_truck3.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      width: 768
+      height: 432
+      enabled: true
+    record:
+      enabled: true
+
+  truck_excavator_night:
+    ffmpeg:
+      inputs:
+        - path: /config/truck n excavator at night.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
+
+version: 0.18-0
