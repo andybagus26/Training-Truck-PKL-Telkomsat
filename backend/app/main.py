@@ -10,10 +10,12 @@ Dokumentasi interaktif: http://localhost:8000/docs
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path as FsPath
 
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from fastapi.staticfiles import StaticFiles
 
 from .frigate import FRIGATE_URL, client
 from .schemas import (LABELS, Box, CameraInfo, CameraStats, CameraSummary, Detection, DetectorStats,
@@ -40,6 +42,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"],
 )
+
+
+# Penarikan per halaman untuk filter min_score di /detections (maks 20 x 500 = 10.000 event).
+MIN_SCORE_PAGE_SIZE = 500
+MIN_SCORE_MAX_PAGES = 20
 
 
 def _to_dt(ts: float | None) -> datetime | None:
@@ -118,7 +125,7 @@ async def detections(
     if label and label not in LABELS:
         raise HTTPException(422, f"Label '{label}' tidak dikenali. Pilihan: {', '.join(LABELS)}")
 
-    params: dict = {"limit": limit}
+    params: dict = {}
     if camera:
         params["camera"] = camera
     if label:
@@ -134,11 +141,22 @@ async def detections(
     if ongoing_only:
         params["in_progress"] = 1
 
-    events = await client.get_json("/api/events", params)
-    items = [_as_detection(e) for e in events]
-    if min_score is not None:
-        items = [d for d in items if (d.score or 0) >= min_score]
-    return items
+    if min_score is None:
+        events = await client.get_json("/api/events", {**params, "limit": limit})
+        return [_as_detection(e) for e in events]
+
+    # min_score disaring di sini, bukan diteruskan ke Frigate: min_score milik Frigate memakai skor
+    # terakhir, sedangkan API ini menampilkan skor tertinggi (top_score). Agar hasil tidak berkurang
+    # karena dipotong limit lebih dulu, event diambil per halaman (terbaru dulu) sampai cukup.
+    items: list[Detection] = []
+    page = dict(params)
+    for _ in range(MIN_SCORE_MAX_PAGES):
+        events = await client.get_json("/api/events", {**page, "limit": MIN_SCORE_PAGE_SIZE})
+        items += [d for d in map(_as_detection, events) if (d.score or 0) >= min_score]
+        if len(items) >= limit or len(events) < MIN_SCORE_PAGE_SIZE:
+            break
+        page["before"] = events[-1]["start_time"]
+    return items[:limit]
 
 
 @app.get("/detections/{detection_id}", response_model=Detection, tags=["deteksi"],
@@ -169,7 +187,7 @@ async def latest_frame(
     height: int = Query(480, ge=120, le=2160, description="Tinggi gambar dalam piksel"),
 ) -> Response:
     content, media_type = await client.get_bytes(
-        f"/api/{camera}/latest.jpg", {"bbox": int(bbox), "h": height}
+        f"/api/{camera}/latest.jpg", {"bbox": int(bbox), "height": height}
     )
     return Response(content=content, media_type=media_type)
 
@@ -233,3 +251,10 @@ async def stats() -> Stats:
         frigate_version=service.get("version"),
         uptime_seconds=service.get("uptime"),
     )
+
+
+# Dashboard visual (folder Dashboard/ di root repo) disajikan di /dashboard/.
+# Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa dashboard.
+DASHBOARD_DIR = FsPath(__file__).resolve().parents[2] / "Dashboard"
+if DASHBOARD_DIR.is_dir():
+    app.mount("/dashboard", StaticFiles(directory=DASHBOARD_DIR, html=True), name="dashboard")
