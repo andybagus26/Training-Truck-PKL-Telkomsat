@@ -44,11 +44,12 @@ scripts/          Script training, pembuatan dataset, pelabelan, dan evaluasi
 notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX) — model v1
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
-docs/             Riwayat perkembangan model dan daftar sumber dataset
+docs/             Riwayat model, sumber dataset, dan grafik hasil training
 ```
 
-- [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v4 beserta alasan tiap penambahan data
+- [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v5 beserta alasan tiap penambahan data
 - [`docs/sumber-dataset.md`](docs/sumber-dataset.md) — daftar lengkap sumber data tiap versi, dengan link
+- [`docs/hasil-training.md`](docs/hasil-training.md) — grafik training, confusion matrix, dan contoh prediksi
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
 dan bisa dibuat ulang dengan script di bawah.
