@@ -45,6 +45,7 @@ notebooks/        Notebook langkah demi langkah (setup, dataset, training, expor
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
 docs/             Riwayat model, sumber dataset, dan grafik hasil training
+dataset-v5-labels/  Anotasi lengkap dataset v5 (tanpa gambar) + panduan membangun ulang
 ```
 
 - [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v5 beserta alasan tiap penambahan data
@@ -52,7 +53,9 @@ docs/             Riwayat model, sumber dataset, dan grafik hasil training
 - [`docs/hasil-training.md`](docs/hasil-training.md) — grafik training, confusion matrix, dan contoh prediksi
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
-dan bisa dibuat ulang dengan script di bawah.
+dan bisa dibuat ulang dengan script di bawah. Anotasinya sendiri tersedia lengkap di
+[`dataset-v5-labels/`](dataset-v5-labels/) — gambarnya tidak disertakan karena sebagian berasal dari
+video publik yang hak ciptanya dipegang pemiliknya.
 
 ## Menjalankan
 

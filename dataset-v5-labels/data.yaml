@@ -1,0 +1,10 @@
+path: .   # sesuaikan setelah gambar disiapkan
+train: train/images
+val: valid/images
+test: test/images
+nc: 4
+names:
+- truck
+- full_load
+- empty_load
+- excavator
