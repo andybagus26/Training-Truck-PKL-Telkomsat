@@ -24,8 +24,10 @@ export/
 apple-silicon-detector/
 backend/data/
 
-# Dashboard visual (lokal, tidak ikut ter-commit)
-Dashboard/
+# Dashboard visual milik Zacky di root repo (lokal, tidak ikut ter-commit).
+# Garis miring di depan membatasi aturan ini ke folder root saja — tanpa itu, git di macOS
+# (yang tidak membedakan huruf besar-kecil) ikut mengabaikan backend/dashboard/.
+/Dashboard/
 
 # Bobot model umum yang diunduh otomatis saat percobaan (bukan bagian dari proyek)
 yolov8*.pt

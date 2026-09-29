@@ -89,6 +89,30 @@ Tidak ada gambar baru. Label `excavator` berasal dari dua sumber:
 - **Review manual** pada gambar site dan frame video: 49 kotak dari usulan model sementara, ditambah
   55 kotak hasil pemeriksaan ulang kotak "bukan truk" dari review v3/v4.
 
+## v6 — video dumping untuk class bed_raised
+
+Adegan bak terangkat tidak ada sama sekali di dataset sebelumnya maupun di rekaman uji, sehingga
+harus dicari sendiri. Dari 15 video yang diperiksa, lima dipakai:
+
+| Video | Kanal | Adegan | Frame terpakai |
+|---|---|---|---|
+| [Caterpillar 793D Tipping a load of waste](https://www.youtube.com/watch?v=Ewxc65UVX3U) | — | Menumpah di waste dump, tampak samping | 43 |
+| [Dumping Mine Waste near Ruth, Nevada](https://www.youtube.com/watch?v=mkN5GF-lnbk) | — | Kamera diam & jauh, paling menyerupai CCTV | 59 |
+| [Komatsu 930E, Teck Greenhills](https://www.youtube.com/watch?v=541YDSOVyTI) | SMS West | Bak terangkat tampak depan, truk mendekat | 47 |
+| [Scania dumper truck tipping rocks](https://www.youtube.com/watch?v=HbVV7NpmC28) | — | Tipper jalan raya, untuk variasi bentuk bak | 49 |
+| [Haul truck dumping into feeder of gyratory crusher](https://www.youtube.com/watch?v=wJvSy5qAmko) | Aggregates Manager | Truk mundur ke corong crusher | 23 |
+
+Total 203 frame pada 2 fps. Anotasinya ada di [`dataset-dump-labels/`](../dataset-dump-labels/)
+— kotak saja, tanpa gambar, sesuai cara yang sama dengan `dataset-v5-labels/`.
+
+Empat video lain sengaja dibuang setelah ditinjau: truknya tertutup tepi timbunan sehingga yang
+terlihat hanya debu, kotak pelacakan melenceng ke awan debu dan tembok, bak hanya terlihat sebagian
+di tepi frame, atau adegan menumpahnya ternyata tidak masuk frame. Alasannya dicatat di
+[`riwayat-model.md`](riwayat-model.md).
+
+Hak cipta video tetap pada pemiliknya. Frame dipakai untuk prototipe dan keperluan internal, dan
+tidak ikut disimpan di repositori ini.
+
 ## Video untuk pengujian (tidak dipakai training)
 
 | Video | Sumber | Dipakai untuk |

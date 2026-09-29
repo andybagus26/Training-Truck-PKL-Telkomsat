@@ -1,4 +1,4 @@
-# Riwayat model v1 → v4
+# Riwayat model v1 → v6
 
 Daftar sumber data tiap versi beserta link ada di [`sumber-dataset.md`](sumber-dataset.md).
 
@@ -173,3 +173,75 @@ Total 2.208 kotak excavator di data training (termasuk salinan dan versi malam).
 
 Deteksi truk justru naik karena excavator tidak lagi salah terdeteksi sebagai truk. Pada video malam,
 excavator yang sebelumnya dihitung sebagai truk kini dikenali dengan benar (85–88% di Frigate).
+
+## v6 — menambah class bed_raised
+
+**Kebutuhan baru:** membedakan truk yang sedang menumpahkan muatan dari truk yang sekadar berhenti.
+Sampai v5 tidak ada sinyal apa pun untuk itu. Diuji pada 205 frame dumping, model v5 tidak pernah
+mengenali bak terangkat, dan pada satu rekaman malah membacanya sebagai `excavator` di 25 frame —
+kelemahan yang sudah tercatat sejak v3 tapi belum pernah ditangani.
+
+**Mencari datanya.** Dataset asli ternyata tidak membantu: class `dumping_soil` (260 gambar) bukan
+adegan menumpahkan muatan, melainkan truk tampak samping dengan bak mendatar di satu pos yang sama,
+hanya divariasi siang dan malam. Itu sebabnya dulu digabung menjadi `truck`. Rekaman uji yang ada pun
+tidak punya satu pun adegan bak terangkat, termasuk `cat775_crusher_demo` yang ternyata adegan loading.
+
+Dataset publik juga tidak menolong. ACID dan sejenisnya hanya mendeteksi *jenis* alat, bukan
+keadaannya; dataset riset yang beranotasi aksi truk-excavator (UIUC, 479 video) tidak terbuka untuk
+diunduh. Jadi datanya dikumpulkan sendiri dari video publik.
+
+**Melabelinya.** Dari 15 video yang diperiksa, 5 adegan layak dipakai. Dua cara otomatis dicoba dan
+gagal, keduanya dicatat di sini supaya tidak diulang:
+
+1. Detektor open-vocabulary (YOLO-World, prompt "raised dump bed of a truck" dan sejenisnya) justru
+   tidak menghasilkan usulan apa pun pada frame yang paling jelas.
+2. Model benih satu class yang dilatih dari 115 frame di 3 adegan tidak bisa melabeli adegan lain:
+   usulannya menempel di tumpukan batu, pipa, dan pagar.
+
+Yang dipakai akhirnya setengah manual: satu kotak digambar manual per adegan, lalu dilacak maju dan
+mundur dengan pencocokan template multi-skala (`scripts/track_box.py`), dan hasilnya ditinjau bergambar
+(`scripts/review_boxes.py`). Peninjauan itu menangkap dua kesalahan yang akan merusak model bila lolos:
+frame saat bak sebenarnya belum naik (itu muatan penuh, bukan dumping), dan frame saat kotak sudah
+melenceng setelah bak turun.
+
+Tiga rekaman dibuang setelah ditinjau. Satu karena truknya tertutup tepi timbunan sehingga yang
+terlihat hanya debu, satu lagi karena kotak pelacakan berakhir menempel di awan debu dan tembok —
+kalau dipakai, model akan belajar bahwa debu berarti bak terangkat, lalu memunculkan dumping palsu.
+
+Hasilnya 203 frame dari 5 adegan. Label `truck` untuk dua rekaman ikut dilacak manual, karena di
+situ v5 gagal total mengenali truknya (0% dan 5%); seluruh prediksi `excavator` pada frame dumping
+dibuang karena memang salah.
+
+**Training:** fine-tune dari v5, 50 epoch, lr 0.001, 320×320, 5.161 gambar latih (frame dumping
+digandakan 3× agar tidak tenggelam). Selesai dalam 3,1 jam di M1 Pro.
+
+**Hasil (test set gabungan 187 gambar):**
+
+| Class | v5 mAP50 | v6 mAP50 |
+|---|---|---|
+| truck | 0.915 | 0.903 |
+| full_load | 0.942 | 0.936 |
+| empty_load | 0.855 | 0.855 |
+| excavator | 0.851 | 0.850 |
+| gabungan | 0.891 | 0.886 |
+
+Turun tipis dan masih dalam rentang wajar. Sebagai gantinya recall naik: truck 0.720 → 0.766,
+excavator 0.789 → 0.824.
+
+**Pada rekaman dumping**, perubahannya besar:
+
+| Rekaman | v5 kenali truk | v5 salah baca excavator | v6 kenali truk | v6 salah excavator | v6 bed_raised |
+|---|---|---|---|---|---|
+| Cat 793D waste dump | 0% | 37% | 100% | 0% | 100% |
+| Nevada waste dump | 5% | 0% | 100% | 0% | 100% |
+| Crusher feeder | 65% | 8% | 91% | 0% | 100% |
+| Komatsu 930E | 100% | 4% | 100% | 0% | 100% |
+| Tipper jalan raya | 79% | 4% | 100% | 0% | 100% |
+
+**Positif palsu nol.** Pada 187 gambar test dan 126 frame rekaman demo Frigate, `bed_raised` tidak
+pernah muncul pada truk berbak normal.
+
+**Yang masih lemah:** generalisasi ke sudut kamera asing. Dari 6 rekaman dumping yang tidak dilatih,
+hanya 1 yang terdeteksi baik; yang berdebu tebal, yang truknya tertutup, dan yang baknya hanya
+terlihat sebagian semuanya gagal. Ini konsekuensi langsung dari hanya 5 adegan yang tersedia, dan
+baru bisa diperbaiki dengan rekaman dari lokasi sebenarnya.

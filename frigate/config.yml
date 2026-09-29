@@ -22,8 +22,8 @@ model:
   height: 320
   input_tensor: nchw
   input_dtype: float
-  path: /models/mining_truck_yolov9t_320_v5.onnx
-  labelmap_path: /models/labelmap_v5.txt
+  path: /models/mining_truck_yolov9t_320_v6.onnx
+  labelmap_path: /models/labelmap_v6.txt
 
 objects:
   track:
@@ -31,7 +31,11 @@ objects:
     - full_load
     - empty_load
     - excavator
+    - bed_raised
   filters:
+    bed_raised:
+      min_score: 0.5
+      threshold: 0.6
     excavator:
       min_score: 0.5
       threshold: 0.6
@@ -44,6 +48,13 @@ objects:
     empty_load:
       min_score: 0.5
       threshold: 0.6
+
+# Simpan gambar saat objek terdeteksi, dipakai oleh endpoint snapshot di backend FastAPI.
+snapshots:
+  enabled: true
+  bounding_box: true
+  retain:
+    default: 3
 
 # Hemat disk: tanpa rekaman terus-menerus / berbasis gerakan (video uji selalu "bergerak" -> sempat 36 GB).
 # Hanya klip saat ada objek terdeteksi (alert/detection), disimpan 3 hari lalu terhapus otomatis.
@@ -202,6 +213,24 @@ cameras:
       enabled: true
     record:
       enabled: true
+
+  # Truk menumpah limbah tambang di waste dump, kamera diam & jauh (83 s, berulang) -> menguji
+  # class bed_raised. Rekaman berkamera goyang tidak dipakai di sini: gerakannya tertangkap di
+  # langit dan kabel, bukan di truknya, sehingga area truk tidak pernah ikut diperiksa detektor.
+  truck_dumping:
+    ffmpeg:
+      inputs:
+        - path: /media/test-videos/truck_dumping.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+    detect:
+      fps: 5
+      enabled: true
+      max_disappeared: 10
+    motion:
+      # Potongan saat loop mengubah seluruh frame; jangan dianggap kilat
+      lightning_threshold: 1.0
 
   truck_malam:
     ffmpeg:

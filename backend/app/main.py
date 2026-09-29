@@ -290,7 +290,7 @@ def _as_activity(row) -> Activity:
 @app.get("/activities", response_model=list[Activity], tags=["aktivitas"],
          summary="Aktivitas yang disimpulkan dari deteksi, mis. truk sedang dimuat")
 async def activities(
-    type: str = Query("loading", description="Jenis aktivitas; saat ini hanya 'loading'"),
+    type: str | None = Query(None, description="loading, dumping, atau idle; kosongkan untuk semua"),
     camera: str | None = Query(None),
     since_minutes: int = Query(120, ge=1, le=10080),
     ongoing_only: bool = Query(False, description="Hanya yang masih berlangsung"),
@@ -388,6 +388,11 @@ async def poller_status() -> PollerStatus:
             tracked_objects=live.status()["tracked_objects"], last_error=live.last_error,
         ),
     )
+
+# Halaman pemantau bawaan: satu berkas HTML yang memanggil endpoint di atas. Disajikan dari sini
+# supaya satu asal dengan API-nya, jadi tidak terganjal aturan CORS browser.
+app.mount("/monitor", StaticFiles(directory=FsPath(__file__).resolve().parents[1] / "dashboard", html=True),
+          name="monitor")
 
 # Dashboard visual (folder Dashboard/ di root repo) disajikan di /dashboard/.
 # Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa dashboard.

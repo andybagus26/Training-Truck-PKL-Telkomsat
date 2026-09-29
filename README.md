@@ -12,8 +12,8 @@ Model dilatih di Mac (Apple Silicon, MPS) dan dijalankan dengan ONNX Runtime + C
 |---|---|
 | Arsitektur | YOLOv9-t (Ultralytics 8.4), ~2 juta parameter |
 | Input | 320×320, NCHW, RGB, nilai 0–1 |
-| Output | `[1, 8, 2100]` — `cx, cy, w, h` (piksel) + 4 skor class, tanpa NMS |
-| Class | `truck`, `full_load`, `empty_load`, `excavator` |
+| Output | `[1, 9, 2100]` — `cx, cy, w, h` (piksel) + 5 skor class, tanpa NMS |
+| Class | `truck`, `full_load`, `empty_load`, `excavator`, `bed_raised` |
 | Kecepatan | ~2 ms/gambar (CoreML, M1 Pro); ~14 ms per permintaan lewat Frigate |
 
 Model siap pakai ada di `models/`.
