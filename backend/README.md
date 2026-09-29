@@ -119,7 +119,7 @@ diambil dari kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
 | `NEAR_GAP` | `0.12` | Jarak maksimal truk-excavator (relatif) |
 | `MIN_DURATION` | `8` | Lama minimal sebelum diakui sebagai loading, detik |
 | `END_GRACE` | `15` | Lama syarat boleh hilang sebelum aktivitas ditutup, detik |
-| `RETENTION_HOURS` | `72` | Masa simpan sampel |
+| `RETENTION_HOURS` | `6` | Masa simpan sampel mentah (aktivitas tidak ikut terhapus) |
 
 Angka default diambil dari pengukuran pada rekaman uji: truk yang benar-benar dimuat menghasilkan
 rentang 21-30 detik, sedangkan truk yang sekadar melintas dekat excavator hanya 0-2 detik. Pada

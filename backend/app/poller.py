@@ -20,7 +20,10 @@ from .store import store
 logger = logging.getLogger("poller")
 
 POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "1"))       # detik antar pengambilan sampel
-RETENTION_HOURS = float(os.getenv("RETENTION_HOURS", "72"))  # sampel lama dibuang setelah ini
+# Sampel mentah hanya dipakai untuk jendela penilaian beberapa menit terakhir; sisanya untuk
+# penelusuran bila ada hasil yang janggal. Aktivitas yang sudah tersimpul disimpan terpisah dan
+# tidak ikut terhapus. Pada 5 kamera, sampel bertambah sekitar 11 MB/jam.
+RETENTION_HOURS = float(os.getenv("RETENTION_HOURS", "6"))   # sampel lama dibuang setelah ini
 POLL_LIMIT = int(os.getenv("POLL_LIMIT", "200"))
 
 state: dict = {"running": False, "last_poll": None, "last_error": None,
