@@ -9,9 +9,15 @@ Frigate NVR  ──►  Backend FastAPI  ──►  dashboard / sistem lain
 (deteksi)         (rapikan & sajikan)    (konsumen data)
 ```
 
+Selain meneruskan data deteksi, backend mengikuti keadaan objek dari waktu ke waktu dan
+menyimpulkan **aktivitas** darinya. Tahap saat ini menangani aktivitas *loading* (truk sedang
+dimuat excavator).
+
 ## Menjalankan
 
 ```bash
+pip install -r backend/requirements.txt
+
 # Frigate harus sudah berjalan (default http://localhost:8971)
 .venv/bin/uvicorn backend.app.main:app --port 8000 --reload
 ```
@@ -24,6 +30,43 @@ Alamat Frigate dan timeout bisa diubah lewat environment variable:
 ```bash
 FRIGATE_URL=http://192.168.1.10:8971 FRIGATE_TIMEOUT=15 .venv/bin/uvicorn backend.app.main:app --port 8000
 ```
+
+### MQTT (diperlukan untuk deteksi aktivitas)
+
+Posisi objek terkini hanya tersedia lewat MQTT. Kotak yang dikembalikan `/api/events` adalah posisi
+saat snapshot terbaik objek diambil, bukan posisi sekarang, sehingga tidak bisa dipakai menilai
+"excavator berdekatan dengan truk" atau "truk berhenti". Karena itu Frigate perlu disambungkan ke
+sebuah broker.
+
+Broker dijalankan berdampingan dengan Frigate (lihat `frigate/mosquitto.conf`):
+
+```yaml
+  mosquitto:
+    container_name: mosquitto
+    image: eclipse-mosquitto:2
+    restart: always
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/data:/mosquitto/data
+    ports:
+      - "1883:1883"
+```
+
+lalu dinyalakan di `config.yml` Frigate:
+
+```yaml
+mqtt:
+  enabled: true
+  host: mosquitto
+  port: 1883
+```
+
+Backend menyambung ke `localhost:1883`; bisa diubah lewat `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`,
+`MQTT_PASSWORD`. Sambungannya dicek di `GET /poller`.
+
+Tanpa broker, backend tetap jalan dengan membaca `/api/events` — daftar deteksi tetap lengkap, tapi
+deteksi aktivitas tidak bisa diandalkan karena alasan di atas. Field `source` pada `/poller`
+menunjukkan sumber yang sedang dipakai.
 
 ## Endpoint
 
@@ -38,6 +81,10 @@ FRIGATE_URL=http://192.168.1.10:8971 FRIGATE_TIMEOUT=15 .venv/bin/uvicorn backen
 | `GET /detections/{id}/snapshot` | Gambar saat objek terdeteksi (JPEG). Parameter: `bbox` |
 | `GET /summary` | Rekap jumlah deteksi per label dan per kamera dalam rentang waktu |
 | `GET /stats` | Performa detektor dan kamera |
+| `GET /activities` | Aktivitas yang tersimpul, mis. truk sedang dimuat. Parameter: `type`, `camera`, `since_minutes`, `ongoing_only`, `limit` |
+| `GET /activities/{id}` | Detail satu aktivitas |
+| `GET /trucks/live` | Keadaan tiap truk yang sedang terlihat: status muatan, berhenti/jalan, excavator terdekat, aktivitas berjalan |
+| `GET /poller` | Status pengambilan sampel dan sambungan MQTT |
 
 ### Penyaringan di `/detections`
 
@@ -51,6 +98,34 @@ FRIGATE_URL=http://192.168.1.10:8971 FRIGATE_TIMEOUT=15 .venv/bin/uvicorn backen
 | `min_score` | `0.7` | Skor minimum |
 | `ongoing_only` | `true` | Hanya objek yang masih terlihat saat ini |
 | `limit` | `100` | Maksimal 500 |
+
+## Aktivitas *loading*
+
+Aktivitas disimpulkan dari sampel keadaan yang diambil tiap detik, bukan dari satu frame saja.
+Sebuah truk dianggap sedang dimuat bila:
+
+1. titik tengah kotaknya **tidak bergeser** lebih dari `MOVE_TOLERANCE` selama `STILL_WINDOW` detik, dan
+2. ada **excavator berdekatan** — jarak antar kotak di bawah `NEAR_GAP` (0 berarti bertumpuk), dan
+3. keduanya bertahan minimal `MIN_DURATION` detik.
+
+Aktivitas ditutup bila syaratnya hilang selama `END_GRACE` detik. Status muatan sebelum dan sesudah
+diambil dari kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
+
+| Variable | Default | Arti |
+|---|---|---|
+| `POLL_INTERVAL` | `1` | Detik antar pengambilan sampel |
+| `MOVE_TOLERANCE` | `0.03` | Batas pergeseran titik tengah (relatif terhadap ukuran frame) |
+| `STILL_WINDOW` | `6` | Jendela penilaian "berhenti", detik |
+| `NEAR_GAP` | `0.12` | Jarak maksimal truk-excavator (relatif) |
+| `MIN_DURATION` | `8` | Lama minimal sebelum diakui sebagai loading, detik |
+| `END_GRACE` | `15` | Lama syarat boleh hilang sebelum aktivitas ditutup, detik |
+| `RETENTION_HOURS` | `72` | Masa simpan sampel |
+
+Angka default diambil dari pengukuran pada rekaman uji: truk yang benar-benar dimuat menghasilkan
+rentang 21-30 detik, sedangkan truk yang sekadar melintas dekat excavator hanya 0-2 detik. Pada
+pengujian 6 menit, 10 aktivitas terbentuk dengan 93-100% waktunya benar-benar memenuhi syarat, dan
+42 truk yang lewat di kamera tanpa excavator tidak menghasilkan aktivitas palsu. Nilainya bergantung
+sudut kamera, jadi perlu disetel ulang untuk lokasi lain.
 
 ### Contoh
 
@@ -86,8 +161,12 @@ berapa pun.
 
 ## Catatan
 
-- **Tanpa database.** Data selalu diambil langsung dari Frigate saat diminta, jadi selalu sinkron.
-  Konsekuensinya, histori mengikuti masa simpan di Frigate (saat ini 3 hari).
+- **Data deteksi tidak disalin.** `/detections`, `/summary`, dan `/stats` mengambil langsung dari
+  Frigate saat diminta, jadi selalu sinkron; historinya mengikuti masa simpan Frigate (3 hari).
+- **Aktivitas perlu penyimpanan sendiri**, karena menilai "berapa lama truk berhenti didampingi
+  excavator" butuh rekaman keadaan dari waktu ke waktu, sedangkan Frigate hanya menyimpan ringkasan
+  per objek. Sampel dan aktivitas disimpan di SQLite (`backend/data/activity.db`, dibuat otomatis
+  dan tidak ikut di-commit). Menghapus file itu hanya menghapus riwayat aktivitas.
 - **Endpoint snapshot** memerlukan `snapshots.enabled: true` di konfigurasi Frigate. Bila sebuah
   deteksi tidak punya gambar, `has_snapshot` bernilai `false` dan `snapshot_url` kosong.
 - **Penamaan class** mengikuti model yang aktif (v5). Pada model versi pertama, truk bernama
@@ -95,5 +174,7 @@ berapa pun.
 - **Penanganan error**: Frigate mati atau tidak terjangkau menghasilkan `503`, terlalu lama merespons
   `504`, dan error dari Frigate diteruskan sebagai `502`. Jadi pemanggil bisa membedakan masalah
   jaringan dari data yang memang tidak ada (`404`).
+- **Aktivitas selain loading** (dumping, idle) belum ditangani. Dumping menunggu penambahan class
+  untuk bak yang terangkat pada model berikutnya; idle menunggu data lapangan.
 - CORS dibuka untuk semua origin agar mudah dipakai dashboard saat pengembangan. Batasi sebelum
   dipakai di jaringan yang lebih luas.

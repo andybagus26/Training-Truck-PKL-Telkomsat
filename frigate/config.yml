@@ -1,5 +1,9 @@
 mqtt:
-  enabled: false
+  enabled: true
+  host: mosquitto
+  port: 1883
+  client_id: frigate
+  topic_prefix: frigate
 
 # Detector native di macOS (ONNX Runtime + CoreML) — jalankan dulu di host:
 #   otomatis via LaunchAgent com.frigate.apple-silicon-detector (log: ~/frigate/logs/apple_silicon_detector.log)

@@ -87,3 +87,53 @@ class Health(BaseModel):
     frigate_reachable: bool
     frigate_version: str | None = None
     model_labels: list[str] = LABELS
+
+
+class Activity(BaseModel):
+    id: int
+    type: str = Field(description="Jenis aktivitas; tahap 1 baru menangani 'loading'")
+    camera: str
+    truck_id: str = Field(description="Id objek truk di Frigate")
+    partner_id: str | None = Field(default=None, description="Id excavator yang memuat, bila terdeteksi")
+    start_time: datetime
+    end_time: datetime | None = Field(default=None, description="Kosong bila masih berlangsung")
+    duration_seconds: float | None = None
+    ongoing: bool
+    load_before: str | None = Field(default=None, description="Status muatan saat aktivitas dimulai")
+    load_after: str | None = Field(default=None, description="Status muatan terakhir yang terlihat")
+    rule: str | None = Field(default=None, description="Aturan yang memicu aktivitas ini")
+
+
+class TruckState(BaseModel):
+    truck_id: str
+    camera: str
+    label: str = "truck"
+    last_seen: datetime
+    score: float | None = None
+    load_state: str | None = Field(default=None, description="full_load, empty_load, atau kosong bila bak tidak terlihat")
+    stationary: bool = Field(description="Titik tengah kotak nyaris tidak bergerak dalam jendela penilaian")
+    excavator_nearby: str | None = None
+    activity: str | None = Field(default=None, description="'loading' bila sedang dimuat")
+    activity_seconds: float | None = None
+
+
+class MqttStatus(BaseModel):
+    connected: bool = Field(description="True bila backend tersambung ke broker MQTT Frigate")
+    broker: str
+    topic: str
+    messages: int = 0
+    last_message: datetime | None = None
+    tracked_objects: int = Field(default=0, description="Objek yang sedang terlihat menurut kabar terakhir")
+    last_error: str | None = None
+
+
+class PollerStatus(BaseModel):
+    running: bool
+    last_poll: datetime | None = None
+    polls: int = 0
+    samples_collected: int = 0
+    last_error: str | None = None
+    samples_in_db: int | None = None
+    activities_in_db: int | None = None
+    source: str = Field(default="", description="Asal sampel: 'mqtt' (posisi terkini) atau 'rest' (cadangan)")
+    mqtt: MqttStatus | None = None

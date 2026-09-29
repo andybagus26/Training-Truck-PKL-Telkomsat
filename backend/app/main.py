@@ -7,6 +7,8 @@ Menjalankan:
     .venv/bin/uvicorn backend.app.main:app --reload --port 8000
 Dokumentasi interaktif: http://localhost:8000/docs
 """
+import asyncio
+import json
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -15,15 +17,30 @@ from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
+from . import poller
+from .activity import LOAD_LABELS, MIN_DURATION, NEAR_GAP, STILL_WINDOW, _gap, _is_still, _load_state
 from .frigate import FRIGATE_URL, client
-from .schemas import (LABELS, Box, CameraInfo, CameraStats, CameraSummary, Detection, DetectorStats,
-                      Health, LabelCount, Stats, Summary)
+from .live import live
+from .schemas import (LABELS, Activity, Box, CameraInfo, CameraStats, CameraSummary, Detection,
+                      DetectorStats, Health, LabelCount, MqttStatus, PollerStatus, Stats, Summary,
+                      TruckState)
+from .store import store
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    try:
+        await poller.refresh_frame_sizes()
+    except Exception:  # Frigate belum siap; poller akan mencoba lagi tiap putaran
+        pass
+    live.start()
+    task = asyncio.create_task(poller.run())
     yield
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    live.stop()
     await client.close()
+    store.close()
 
 
 app = FastAPI(
@@ -32,7 +49,9 @@ app = FastAPI(
         "Perantara untuk data deteksi Frigate NVR. Model yang dipakai: YOLOv9-t 320x320 dengan class "
         "`truck`, `full_load`, `empty_load`, `excavator`.\n\n"
         "Catatan: pada model versi pertama class truk bernama `mining_truck`; sejak itu digabung "
-        "menjadi `truck`, dan `excavator` ditambahkan pada model v5."
+        "menjadi `truck`, dan `excavator` ditambahkan pada model v5.\n\n"
+        "Selain meneruskan data deteksi, backend ini mengambil sampel keadaan tiap beberapa detik dan "
+        "menyimpulkan aktivitas darinya. Tahap saat ini menangani aktivitas **loading** (truk sedang dimuat)."
     ),
     version="1.0.0",
     lifespan=lifespan,
@@ -232,4 +251,91 @@ async def stats() -> Stats:
         ],
         frigate_version=service.get("version"),
         uptime_seconds=service.get("uptime"),
+    )
+
+
+# ---------------------------------------------------------------- aktivitas
+
+def _as_activity(row) -> Activity:
+    start, end = row["start_ts"], row["end_ts"]
+    meta = json.loads(row["meta"] or "{}")
+    return Activity(
+        id=row["id"], type=row["type"], camera=row["camera"], truck_id=row["truck_id"],
+        partner_id=row["partner_id"], start_time=_to_dt(start), end_time=_to_dt(end),
+        duration_seconds=round(end - start, 1) if end else None,
+        ongoing=end is None, load_before=row["load_before"], load_after=row["load_after"],
+        rule=meta.get("rule"),
+    )
+
+
+@app.get("/activities", response_model=list[Activity], tags=["aktivitas"],
+         summary="Aktivitas yang disimpulkan dari deteksi, mis. truk sedang dimuat")
+async def activities(
+    type: str = Query("loading", description="Jenis aktivitas; saat ini hanya 'loading'"),
+    camera: str | None = Query(None),
+    since_minutes: int = Query(120, ge=1, le=10080),
+    ongoing_only: bool = Query(False, description="Hanya yang masih berlangsung"),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[Activity]:
+    since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).timestamp()
+    rows = store.activities(type_=type, camera=camera, since_ts=since,
+                            ongoing_only=ongoing_only, limit=limit)
+    return [_as_activity(r) for r in rows]
+
+
+@app.get("/activities/{activity_id}", response_model=Activity, tags=["aktivitas"],
+         summary="Detail satu aktivitas")
+async def activity(activity_id: int) -> Activity:
+    row = store.activity(activity_id)
+    if row is None:
+        raise HTTPException(404, f"Aktivitas {activity_id} tidak ditemukan")
+    return _as_activity(row)
+
+
+@app.get("/trucks/live", response_model=list[TruckState], tags=["aktivitas"],
+         summary="Keadaan tiap truk saat ini: diam atau bergerak, status muatan, sedang dimuat atau tidak")
+async def trucks_live(camera: str | None = Query(None)) -> list[TruckState]:
+    now = datetime.now(timezone.utc).timestamp()
+    rows = store.samples_since(now - 120, camera)
+    by_object: dict[str, list] = defaultdict(list)
+    for r in rows:
+        by_object[r["object_id"]].append(r)
+
+    out: list[TruckState] = []
+    for obj_id, track in by_object.items():
+        last = track[-1]
+        if last["label"] != "truck" or last["ts"] < now - STILL_WINDOW:
+            continue
+        same_cam = [t[-1] for t in by_object.values()
+                    if t[-1]["camera"] == last["camera"] and t[-1]["ts"] >= now - STILL_WINDOW]
+        near = next((s["object_id"] for s in same_cam
+                     if s["label"] == "excavator" and s["x"] is not None and last["x"] is not None
+                     and _gap(last, s) <= NEAR_GAP), None)
+        act = store.ongoing_activity("loading", obj_id)
+        out.append(TruckState(
+            truck_id=obj_id, camera=last["camera"], last_seen=_to_dt(last["ts"]),
+            score=round(last["score"], 4) if last["score"] else None,
+            load_state=_load_state(last, [s for s in same_cam if s["label"] in LOAD_LABELS]) if last["x"] is not None else None,
+            stationary=_is_still(track, last["ts"]),
+            excavator_nearby=near,
+            activity="loading" if act else None,
+            activity_seconds=round(last["ts"] - act["start_ts"], 1) if act else None,
+        ))
+    return sorted(out, key=lambda t: t.last_seen, reverse=True)
+
+
+@app.get("/poller", response_model=PollerStatus, tags=["status"],
+         summary="Status pengambilan sampel berkala dari Frigate")
+async def poller_status() -> PollerStatus:
+    c = store.counts()
+    return PollerStatus(
+        running=poller.state["running"], last_poll=_to_dt(poller.state["last_poll"]),
+        polls=poller.state["polls"], samples_collected=poller.state["samples"],
+        last_error=poller.state["last_error"], samples_in_db=c["samples"],
+        activities_in_db=c["activities"], source=poller.state["source"],
+        mqtt=MqttStatus(
+            connected=live.connected, broker=live.status()["broker"], topic=live.status()["topic"],
+            messages=live.messages, last_message=_to_dt(live.last_message_ts),
+            tracked_objects=live.status()["tracked_objects"], last_error=live.last_error,
+        ),
     )
