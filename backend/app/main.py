@@ -389,10 +389,12 @@ async def poller_status() -> PollerStatus:
         ),
     )
 
-# Halaman pemantau bawaan: satu berkas HTML yang memanggil endpoint di atas. Disajikan dari sini
-# supaya satu asal dengan API-nya, jadi tidak terganjal aturan CORS browser.
-app.mount("/monitor", StaticFiles(directory=FsPath(__file__).resolve().parents[1] / "dashboard", html=True),
-          name="monitor")
+# Halaman pemantau lokal (backend/dashboard/, tidak ikut di-commit) disajikan di /monitor.
+# Disajikan dari sini supaya satu asal dengan API-nya, jadi tidak terganjal aturan CORS browser.
+# Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa halaman itu.
+MONITOR_DIR = FsPath(__file__).resolve().parents[1] / "dashboard"
+if MONITOR_DIR.is_dir():
+    app.mount("/monitor", StaticFiles(directory=MONITOR_DIR, html=True), name="monitor")
 
 # Dashboard visual (folder Dashboard/ di root repo) disajikan di /dashboard/.
 # Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa dashboard.
