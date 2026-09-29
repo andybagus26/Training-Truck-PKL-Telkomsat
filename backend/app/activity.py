@@ -23,6 +23,7 @@ Batas kemampuannya perlu disebut terus terang, karena ini menyangkut cara membac
 Semua ambang bisa diubah lewat environment variable, karena nilainya bergantung sudut kamera dan
 kebiasaan di lokasi.
 """
+import bisect
 import os
 from collections import defaultdict
 
@@ -67,9 +68,15 @@ def _gap(a, b) -> float:
 
 
 def _is_still(track: list, now_ts: float) -> bool:
-    """Titik tengah kotak nyaris tidak bergeser sepanjang STILL_WINDOW terakhir sampai now_ts."""
-    recent = [s for s in track
-              if now_ts - STILL_WINDOW <= s["ts"] <= now_ts and s["x"] is not None]
+    """Titik tengah kotak nyaris tidak bergeser sepanjang STILL_WINDOW terakhir sampai now_ts.
+
+    `track` harus urut waktu (store selalu mengembalikan ORDER BY ts). Jendela dicari dengan bisect,
+    bukan menyisir seluruh track, karena fungsi ini dipanggil untuk tiap sampel: tanpa itu waktu
+    hitung naik kuadrat untuk truk yang diam lama (3 truk x 3 jam: 12 detik, API ikut macet).
+    """
+    lo = bisect.bisect_left(track, now_ts - STILL_WINDOW, key=lambda s: s["ts"])
+    hi = bisect.bisect_right(track, now_ts, key=lambda s: s["ts"])
+    recent = [s for s in track[lo:hi] if s["x"] is not None]
     if len(recent) < 2:
         return False
     xs = [_center(s)[0] for s in recent]
