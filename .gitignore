@@ -26,3 +26,7 @@ backend/data/
 
 # Dashboard visual (lokal, tidak ikut ter-commit)
 Dashboard/
+
+# Bobot model umum yang diunduh otomatis saat percobaan (bukan bagian dari proyek)
+yolov8*.pt
+yolov9t.pt

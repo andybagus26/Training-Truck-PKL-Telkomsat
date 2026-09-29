@@ -20,12 +20,13 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from . import poller
-from .activity import LOAD_LABELS, MIN_DURATION, NEAR_GAP, STILL_WINDOW, _gap, _is_still, _load_state
+from .activity import (LOAD_LABELS, NEAR_GAP, STILL_WINDOW, _gap, _is_still, _load_state, operations,
+                       state_at, utilization)
 from .frigate import FRIGATE_URL, client
 from .live import live
 from .schemas import (LABELS, Activity, Box, CameraInfo, CameraStats, CameraSummary, Detection,
                       DetectorStats, Health, LabelCount, MqttStatus, PollerStatus, Stats, Summary,
-                      TruckState)
+                      CameraOperations, TruckState, TruckUtilization)
 from .store import store
 
 
@@ -329,17 +330,47 @@ async def trucks_live(camera: str | None = Query(None)) -> list[TruckState]:
         near = next((s["object_id"] for s in same_cam
                      if s["label"] == "excavator" and s["x"] is not None and last["x"] is not None
                      and _gap(last, s) <= NEAR_GAP), None)
-        act = store.ongoing_activity("loading", obj_id)
+        others_now = [s for s in same_cam if s["ts"] >= last["ts"] - 1]
+        state, _ = state_at(last, others_now, track)
+        act = next((a for a in (store.ongoing_activity(t, obj_id)
+                                for t in ("dumping", "loading", "idle")) if a), None)
         out.append(TruckState(
             truck_id=obj_id, camera=last["camera"], last_seen=_to_dt(last["ts"]),
             score=round(last["score"], 4) if last["score"] else None,
             load_state=_load_state(last, [s for s in same_cam if s["label"] in LOAD_LABELS]) if last["x"] is not None else None,
             stationary=_is_still(track, last["ts"]),
             excavator_nearby=near,
-            activity="loading" if act else None,
+            state=state,
+            activity=act["type"] if act else None,
             activity_seconds=round(last["ts"] - act["start_ts"], 1) if act else None,
         ))
     return sorted(out, key=lambda t: t.last_seen, reverse=True)
+
+
+@app.get("/utilization", response_model=list[TruckUtilization], tags=["aktivitas"],
+         summary="Berapa lama tiap truk dimuat, menumpah, menganggur, dan bergerak")
+async def truck_utilization(
+    camera: str | None = Query(None),
+    since_minutes: int = Query(30, ge=1, le=10080),
+) -> list[TruckUtilization]:
+    """Dihitung ulang dari sampel, sehingga jumlah seluruh keadaan sama dengan lama truk terlihat.
+
+    `idle_share` adalah bagian waktu truk berhenti tanpa dilayani — angka inilah yang dipakai menilai
+    pemborosan waktu. Ingat batasannya: kamera tidak tahu mesin hidup atau mati, dan id truk hanya
+    berlaku selama objek itu terlihat di satu kamera.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).timestamp()
+    return [TruckUtilization(**r) for r in utilization(since, camera)]
+
+
+@app.get("/operations", response_model=list[CameraOperations], tags=["aktivitas"],
+         summary="Rekap per kamera: truk terlihat, waktu per keadaan, jumlah muat dan tumpah")
+async def camera_operations(
+    camera: str | None = Query(None),
+    since_minutes: int = Query(60, ge=1, le=10080),
+) -> list[CameraOperations]:
+    since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).timestamp()
+    return [CameraOperations(**r) for r in operations(since, camera)]
 
 
 @app.get("/poller", response_model=PollerStatus, tags=["status"],

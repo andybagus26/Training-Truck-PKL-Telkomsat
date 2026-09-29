@@ -73,7 +73,7 @@ menunjukkan sumber yang sedang dipakai.
 | Endpoint | Fungsi |
 |---|---|
 | `GET /health` | Status backend, apakah Frigate terjangkau, versi Frigate, daftar class model |
-| `GET /labels` | Daftar class: `truck`, `full_load`, `empty_load`, `excavator` |
+| `GET /labels` | Daftar class: `truck`, `full_load`, `empty_load`, `excavator`, `bed_raised` |
 | `GET /cameras` | Daftar kamera: status aktif, fps deteksi, resolusi, zone, class yang dilacak |
 | `GET /cameras/{camera}/latest` | Frame terbaru sebuah kamera (JPEG). Parameter: `bbox`, `height` |
 | `GET /detections` | Daftar deteksi yang sudah dirapikan |
@@ -81,9 +81,11 @@ menunjukkan sumber yang sedang dipakai.
 | `GET /detections/{id}/snapshot` | Gambar saat objek terdeteksi (JPEG). Parameter: `bbox` |
 | `GET /summary` | Rekap jumlah deteksi per label dan per kamera dalam rentang waktu |
 | `GET /stats` | Performa detektor dan kamera |
-| `GET /activities` | Aktivitas yang tersimpul, mis. truk sedang dimuat. Parameter: `type`, `camera`, `since_minutes`, `ongoing_only`, `limit` |
+| `GET /activities` | Aktivitas yang tersimpul: `loading`, `dumping`, `idle`. Parameter: `type`, `camera`, `since_minutes`, `ongoing_only`, `limit` |
 | `GET /activities/{id}` | Detail satu aktivitas |
-| `GET /trucks/live` | Keadaan tiap truk yang sedang terlihat: status muatan, berhenti/jalan, excavator terdekat, aktivitas berjalan |
+| `GET /trucks/live` | Keadaan tiap truk yang sedang terlihat: `moving`/`loading`/`dumping`/`idle`, status muatan, excavator terdekat |
+| `GET /utilization` | Per truk: lama tiap keadaan dan bagian waktu yang terbuang. Parameter: `camera`, `since_minutes` |
+| `GET /operations` | Per kamera: truk terlihat, total waktu tiap keadaan, jumlah dan rata-rata durasi aktivitas |
 | `GET /poller` | Status pengambilan sampel dan sambungan MQTT |
 
 ### Penyaringan di `/detections`
@@ -99,17 +101,22 @@ menunjukkan sumber yang sedang dipakai.
 | `ongoing_only` | `true` | Hanya objek yang masih terlihat saat ini |
 | `limit` | `100` | Maksimal 500 |
 
-## Aktivitas *loading*
+## Keadaan truk dan aktivitas
 
-Aktivitas disimpulkan dari sampel keadaan yang diambil tiap detik, bukan dari satu frame saja.
-Sebuah truk dianggap sedang dimuat bila:
+Aktivitas disimpulkan dari sampel keadaan yang diambil tiap detik, bukan dari satu frame saja. Pada
+setiap titik waktu, sebuah truk berada di salah satu dari empat keadaan:
 
-1. titik tengah kotaknya **tidak bergeser** lebih dari `MOVE_TOLERANCE` selama `STILL_WINDOW` detik, dan
-2. ada **excavator berdekatan** — jarak antar kotak di bawah `NEAR_GAP` (0 berarti bertumpuk), dan
-3. keduanya bertahan minimal `MIN_DURATION` detik.
+| Keadaan | Syarat |
+|---|---|
+| `moving` | titik tengah kotaknya bergeser lebih dari `MOVE_TOLERANCE` dalam `STILL_WINDOW` detik terakhir |
+| `dumping` | truk berhenti dan ada kotak `bed_raised` di dalam kotak truk |
+| `loading` | truk berhenti dan ada excavator berdekatan — jarak antar kotak di bawah `NEAR_GAP` (0 berarti bertumpuk) |
+| `idle` | truk berhenti, tidak sedang dimuat maupun menumpah |
 
-Aktivitas ditutup bila syaratnya hilang selama `END_GRACE` detik. Status muatan sebelum dan sesudah
-diambil dari kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
+Urutan penilaiannya dumping, lalu loading, lalu idle, sehingga satu truk tidak pernah terhitung dua
+kali. Sebuah keadaan baru dicatat sebagai aktivitas bila bertahan melewati lama minimalnya, dan
+ditutup bila syaratnya hilang selama `END_GRACE` detik. Status muatan sebelum dan sesudah diambil dari
+kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
 
 | Variable | Default | Arti |
 |---|---|---|
@@ -118,14 +125,40 @@ diambil dari kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
 | `STILL_WINDOW` | `6` | Jendela penilaian "berhenti", detik |
 | `NEAR_GAP` | `0.12` | Jarak maksimal truk-excavator (relatif) |
 | `MIN_DURATION` | `8` | Lama minimal sebelum diakui sebagai loading, detik |
+| `MIN_DUMP` | `5` | Lama minimal sebelum diakui sebagai dumping, detik |
+| `MIN_IDLE` | `30` | Lama minimal sebelum diakui sebagai idle, detik |
 | `END_GRACE` | `15` | Lama syarat boleh hilang sebelum aktivitas ditutup, detik |
 | `RETENTION_HOURS` | `6` | Masa simpan sampel mentah (aktivitas tidak ikut terhapus) |
 
-Angka default diambil dari pengukuran pada rekaman uji: truk yang benar-benar dimuat menghasilkan
-rentang 21-30 detik, sedangkan truk yang sekadar melintas dekat excavator hanya 0-2 detik. Pada
-pengujian 6 menit, 10 aktivitas terbentuk dengan 93-100% waktunya benar-benar memenuhi syarat, dan
-42 truk yang lewat di kamera tanpa excavator tidak menghasilkan aktivitas palsu. Nilainya bergantung
-sudut kamera, jadi perlu disetel ulang untuk lokasi lain.
+Ambang idle sengaja lebih panjang: berhenti sebentar untuk manuver atau memberi jalan bukan
+pemborosan, yang dicari adalah berhenti yang benar-benar menunggu.
+
+Angka default lainnya diambil dari pengukuran pada rekaman uji: truk yang benar-benar dimuat
+menghasilkan rentang 21-30 detik, sedangkan truk yang sekadar melintas dekat excavator hanya 0-2
+detik. Pada pengujian 6 menit, 10 aktivitas loading terbentuk dengan 93-100% waktunya benar-benar
+memenuhi syarat, dan 42 truk yang lewat di kamera tanpa excavator tidak menghasilkan aktivitas palsu.
+Nilainya bergantung sudut kamera, jadi perlu disetel ulang untuk lokasi lain.
+
+### Menghitung waktu terbuang
+
+`GET /utilization` merinci per truk, `GET /operations` merekap per kamera: berapa lama truk berada di
+tiap keadaan, berapa kali dimuat atau menumpah, dan berapa rata-rata durasinya. Keduanya dihitung
+ulang dari sampel, bukan dari tabel aktivitas, sehingga keadaan yang terlalu singkat untuk diakui
+sebagai aktivitas pun tetap terhitung — jumlah seluruh keadaan sama dengan lama truk itu terlihat.
+`idle_share` adalah bagian waktu truk berhenti tanpa dilayani.
+
+### Yang tidak bisa dijawab dari kamera
+
+Ini perlu diketahui sebelum angkanya dipakai mengambil keputusan:
+
+- **Mesin hidup atau mati tidak terlihat.** `idle` di sini berarti "berhenti dan tidak sedang
+  dilayani". Truk yang parkir selesai giliran terlihat sama persis dengan truk yang menunggu
+  excavator; yang membedakan hanya lama berhentinya dan di zone mana, jadi ambangnya harus mengikuti
+  aturan lapangan.
+- **Tonase tidak terukur** — yang diketahui hanya penuh atau kosong.
+- **Siklus penuh per truk belum bisa dirangkai.** Id objek Frigate berlaku per kamera dan per
+  kemunculan, jadi truk yang keluar-masuk frame dihitung sebagai objek baru. Untuk menghitung ritase
+  dan waktu siklus, truknya harus dikenali satuan, misalnya lewat nomor lambung.
 
 ### Contoh
 
@@ -174,7 +207,8 @@ berapa pun.
 - **Penanganan error**: Frigate mati atau tidak terjangkau menghasilkan `503`, terlalu lama merespons
   `504`, dan error dari Frigate diteruskan sebagai `502`. Jadi pemanggil bisa membedakan masalah
   jaringan dari data yang memang tidak ada (`404`).
-- **Aktivitas selain loading** (dumping, idle) belum ditangani. Dumping menunggu penambahan class
-  untuk bak yang terangkat pada model berikutnya; idle menunggu data lapangan.
+- **Deteksi dumping menunggu model v6**, yang menambah class `bed_raised` untuk bak yang terangkat.
+  Aturannya sudah terpasang, jadi begitu model itu aktif di Frigate, aktivitas `dumping` langsung
+  tercatat tanpa perlu mengubah backend.
 - CORS dibuka untuk semua origin agar mudah dipakai dashboard saat pengembangan. Batasi sebelum
   dipakai di jaringan yang lebih luas.

@@ -4,7 +4,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 # Label sesuai model v5 yang aktif di Frigate
-LABELS = ["truck", "full_load", "empty_load", "excavator"]
+LABELS = ["truck", "full_load", "empty_load", "excavator", "bed_raised"]
 
 
 class Box(BaseModel):
@@ -17,7 +17,7 @@ class Box(BaseModel):
 class Detection(BaseModel):
     id: str
     camera: str
-    label: str = Field(description="truck, full_load, empty_load, atau excavator")
+    label: str = Field(description="truck, full_load, empty_load, excavator, atau bed_raised")
     score: float | None = Field(default=None, description="Skor tertinggi selama objek dilacak, 0-1")
     start_time: datetime
     end_time: datetime | None = Field(default=None, description="Kosong bila objek masih terlihat")
@@ -113,8 +113,18 @@ class TruckState(BaseModel):
     load_state: str | None = Field(default=None, description="full_load, empty_load, atau kosong bila bak tidak terlihat")
     stationary: bool = Field(description="Titik tengah kotak nyaris tidak bergerak dalam jendela penilaian")
     excavator_nearby: str | None = None
-    activity: str | None = Field(default=None, description="'loading' bila sedang dimuat")
+    state: str = Field(description="moving, loading, dumping, atau idle")
+    activity: str | None = Field(default=None, description="Aktivitas yang sedang tercatat berjalan")
     activity_seconds: float | None = None
+
+
+class TruckUtilization(BaseModel):
+    truck_id: str
+    camera: str
+    seen_seconds: float = Field(description="Lama truk terlihat dalam rentang yang diminta")
+    seconds: dict[str, float] = Field(description="Lama tiap keadaan: moving, loading, dumping, idle")
+    idle_share: float | None = Field(default=None, description="Bagian waktu berhenti tanpa dilayani, 0-1")
+    excavators: list[str] = Field(default_factory=list, description="Excavator yang memuat truk ini")
 
 
 class MqttStatus(BaseModel):
@@ -125,6 +135,22 @@ class MqttStatus(BaseModel):
     last_message: datetime | None = None
     tracked_objects: int = Field(default=0, description="Objek yang sedang terlihat menurut kabar terakhir")
     last_error: str | None = None
+
+
+class EventSummary(BaseModel):
+    count: int
+    average_seconds: float
+
+
+class CameraOperations(BaseModel):
+    camera: str
+    trucks_seen: int
+    truck_seconds: float = Field(description="Jumlah waktu seluruh truk terlihat di kamera ini")
+    seconds: dict[str, float] = Field(description="Total waktu per keadaan")
+    idle_share: float | None = Field(default=None, description="Bagian waktu truk berhenti tanpa dilayani")
+    events: dict[str, EventSummary] = Field(default_factory=dict,
+                                            description="Jumlah dan rata-rata durasi tiap aktivitas yang sudah selesai")
+    excavators_seen: int = 0
 
 
 class PollerStatus(BaseModel):

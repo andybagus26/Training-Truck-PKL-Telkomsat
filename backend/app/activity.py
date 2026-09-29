@@ -1,32 +1,27 @@
-"""Menyimpulkan aktivitas dari deretan deteksi.
+"""Menyimpulkan apa yang sedang dilakukan tiap truk, dari deretan sampel deteksi.
 
-Tahap 1 menangani satu aktivitas: **loading** (truk sedang dimuat).
+Tiga aktivitas ditangani:
 
-Aturannya, dinilai pada tiap putaran sampel:
+* **loading** — truk berhenti dan ada excavator berdekatan.
+* **dumping** — truk berhenti dan baknya terangkat (class `bed_raised` pada model v6).
+* **idle**    — truk berhenti tapi tidak sedang dimuat maupun menumpah. Inilah waktu yang terbuang:
+  mengantre, menunggu excavator, atau berhenti tanpa dilayani.
 
-1. Truk **berhenti** — titik tengah kotaknya bergeser kurang dari MOVE_TOLERANCE selama
-   STILL_WINDOW detik terakhir.
-2. Ada **excavator berdekatan** dengan truk — jarak antar kotak kurang dari NEAR_GAP (relatif
-   terhadap lebar frame); 0 berarti kotaknya bertumpuk.
-3. Aktivitas **dimulai** bila kedua syarat itu bertahan selama MIN_DURATION detik. Putus-putus
-   sesaat dijembatani, karena deteksi kadang hilang satu-dua frame.
-4. Aktivitas **selesai** bila excavator menjauh, truk jalan lagi, atau truk hilang selama
-   END_GRACE detik.
-5. Status muatan sebelum dan sesudah dicatat bila terlihat, sebagai bukti pendukung.
+Pada satu titik waktu sebuah truk hanya boleh berada di satu keadaan. Urutan penilaiannya:
+dumping lebih dulu, lalu loading, lalu idle; truk yang kotaknya bergerak dianggap `moving`.
 
-Syarat "truk berhenti" hanya bisa dipakai karena sampelnya diambil dari MQTT. Kotak pada
-`/api/events` adalah posisi saat snapshot terbaik objek diambil, bukan posisi sekarang, sehingga
-semua objek tampak diam dan kotak antar objek tidak bisa dibandingkan. Lihat live.py.
+Batas kemampuannya perlu disebut terus terang, karena ini menyangkut cara membaca angkanya:
 
-Ambang dipilih dari pengukuran pada rekaman uji: truk yang benar-benar dimuat menghasilkan rentang
-27-30 detik, sedangkan truk yang sekadar lewat dekat excavator hanya 0-2 detik setelah syarat diam
-ikut dihitung. Angka ini berasal dari video demo, jadi perlu disetel ulang begitu ada rekaman dari
-lokasi sebenarnya.
+* Kamera tidak bisa tahu mesin hidup atau mati. `idle` di sini berarti "berhenti dan tidak sedang
+  dilayani" — truk parkir selesai giliran terlihat sama persis. Yang membedakan hanya lama berhentinya
+  dan di zone mana, jadi ambangnya harus disetel mengikuti aturan lapangan.
+* Id objek Frigate berlaku per kamera dan per kemunculan. Satu truk yang keluar-masuk frame akan
+  dihitung sebagai objek baru, sehingga siklus penuh (muat -> angkut -> tumpah -> kembali) belum bisa
+  dirangkai. Untuk itu truknya harus dikenali satuan, misalnya lewat nomor lambung — dataset awal
+  sebenarnya punya class `tail_number`, jadi jalannya ada, tapi itu pekerjaan tersendiri.
 
-Status muatan truk diambil dari kotak `full_load`/`empty_load` yang titik tengahnya berada di dalam
-kotak truk pada waktu yang sama.
-
-Semua ambang bisa diubah lewat environment variable, karena nilainya bergantung pada sudut kamera.
+Semua ambang bisa diubah lewat environment variable, karena nilainya bergantung sudut kamera dan
+kebiasaan di lokasi.
 """
 import os
 from collections import defaultdict
@@ -34,11 +29,24 @@ from collections import defaultdict
 from .store import store
 
 MOVE_TOLERANCE = float(os.getenv("MOVE_TOLERANCE", "0.03"))   # perpindahan titik tengah, relatif
-STILL_WINDOW = float(os.getenv("STILL_WINDOW", "6"))            # detik, jendela penilaian "diam"
-NEAR_GAP = float(os.getenv("NEAR_GAP", "0.12"))                # jarak maksimal truk-excavator, relatif
-MIN_DURATION = float(os.getenv("MIN_DURATION", "8"))           # detik, sebelum diakui sebagai loading
-END_GRACE = float(os.getenv("END_GRACE", "15"))                # detik tanpa excavator sebelum dianggap selesai
+STILL_WINDOW = float(os.getenv("STILL_WINDOW", "6"))          # detik, jendela penilaian "berhenti"
+NEAR_GAP = float(os.getenv("NEAR_GAP", "0.12"))               # jarak maksimal truk-excavator, relatif
+END_GRACE = float(os.getenv("END_GRACE", "15"))               # detik syarat boleh hilang sebelum ditutup
+
+# Lama minimal sebelum sebuah keadaan diakui. Idle sengaja lebih panjang: berhenti sebentar untuk
+# manuver atau memberi jalan bukan pemborosan, yang dicari adalah berhenti yang benar-benar menunggu.
+MIN_DURATION = {
+    "loading": float(os.getenv("MIN_DURATION", "8")),
+    "dumping": float(os.getenv("MIN_DUMP", "5")),
+    "idle": float(os.getenv("MIN_IDLE", "30")),
+}
+RULE = {
+    "loading": "truk berhenti + excavator berdekatan",
+    "dumping": "truk berhenti + bak terangkat",
+    "idle": "truk berhenti, tidak dimuat dan tidak menumpah",
+}
 LOAD_LABELS = {"full_load", "empty_load"}
+BED_LABEL = "bed_raised"
 
 
 def _center(r) -> tuple[float, float]:
@@ -79,29 +87,49 @@ def _load_state(truck_sample, others: list) -> str | None:
     return best["label"] if best else None
 
 
-def _condition_timeline(track: list, others_by_ts: dict) -> list[tuple[float, bool, str | None]]:
-    """Untuk tiap sampel truk: apakah syarat loading terpenuhi, dan id excavator yang berdekatan."""
+def _bed_raised(truck_sample, others: list) -> bool:
+    return any(o["label"] == BED_LABEL and o["x"] is not None and _inside(o, truck_sample)
+               for o in others)
+
+
+def _near_excavator(truck_sample, others: list) -> str | None:
+    for o in others:
+        if o["label"] == "excavator" and o["x"] is not None and _gap(truck_sample, o) <= NEAR_GAP:
+            return o["object_id"]
+    return None
+
+
+def state_at(truck_sample, others: list, track: list) -> tuple[str, str | None]:
+    """Keadaan truk pada satu titik waktu, dan id excavator bila sedang dimuat."""
+    if truck_sample["x"] is None:
+        return "unknown", None
+    if not _is_still(track, truck_sample["ts"]):
+        return "moving", None
+    if _bed_raised(truck_sample, others):
+        return "dumping", None
+    near = _near_excavator(truck_sample, others)
+    if near:
+        return "loading", near
+    return "idle", None
+
+
+def _timeline(track: list, others_by_ts: dict) -> list[tuple[float, str, str | None]]:
+    """(waktu, keadaan, pasangan) untuk tiap sampel truk."""
     out = []
     for s in track:
-        if s["x"] is None:
-            out.append((s["ts"], False, None))
-            continue
-        near = None
-        for o in others_by_ts.get(s["ts"], []):
-            if o["label"] == "excavator" and o["x"] is not None and _gap(s, o) <= NEAR_GAP:
-                near = o["object_id"]
-                break
-        out.append((s["ts"], near is not None and _is_still(track, s["ts"]), near))
+        others = others_by_ts.get(s["ts"], [])
+        st, partner = state_at(s, others, track)
+        out.append((s["ts"], st, partner))
     return out
 
 
-def _last_true_run(timeline: list) -> tuple[float | None, float | None, str | None]:
-    """Rentang terakhir saat syarat terpenuhi.
+def _last_run(timeline: list, want: str) -> tuple[float | None, float | None, str | None]:
+    """Rentang terakhir saat keadaannya `want`.
 
-    Jeda dihitung dari selisih waktu antar titik yang memenuhi syarat, bukan dari ada/tidaknya sampel,
-    karena objek bisa hilang sama sekali dari Frigate (tidak menghasilkan sampel apa pun).
+    Jeda dihitung dari selisih waktu antar titik yang cocok, bukan dari ada/tidaknya sampel, karena
+    objek bisa hilang sama sekali dari Frigate dan tidak menghasilkan sampel apa pun.
     """
-    hits = [(ts, near) for ts, ok, near in timeline if ok]
+    hits = [(ts, partner) for ts, st, partner in timeline if st == want]
     if not hits:
         return None, None, None
     end = hits[-1][0]
@@ -113,8 +141,8 @@ def _last_true_run(timeline: list) -> tuple[float | None, float | None, str | No
     return start, end, partner
 
 
-def evaluate(now_ts: float, window: float = 300.0) -> dict:
-    """Perbarui aktivitas loading berdasarkan sampel terakhir. Kembalikan ringkasan perubahan."""
+def evaluate(now_ts: float, window: float = 600.0) -> dict:
+    """Perbarui aktivitas semua truk berdasarkan sampel terakhir. Kembalikan ringkasan perubahan."""
     rows = store.samples_since(now_ts - window)
     by_object: dict[str, list] = defaultdict(list)
     per_camera_ts: dict[str, dict] = defaultdict(lambda: defaultdict(list))
@@ -122,38 +150,119 @@ def evaluate(now_ts: float, window: float = 300.0) -> dict:
         by_object[r["object_id"]].append(r)
         per_camera_ts[r["camera"]][r["ts"]].append(r)
 
-    opened = closed = discarded = 0
+    changed = {"opened": 0, "closed": 0, "discarded": 0}
     for obj_id, track in by_object.items():
         if track[-1]["label"] != "truck":
             continue
         camera = track[-1]["camera"]
-        timeline = _condition_timeline(track, per_camera_ts[camera])
-        start_ts, last_true_ts, partner = _last_true_run(timeline)
-        ongoing = store.ongoing_activity("loading", obj_id)
+        timeline = _timeline(track, per_camera_ts[camera])
+        last = track[-1]
+        others_now = per_camera_ts[camera].get(last["ts"], [])
 
-        if ongoing is None:
-            # syarat harus terpenuhi terus-menerus selama MIN_DURATION
-            if start_ts and last_true_ts and last_true_ts - start_ts >= MIN_DURATION \
-                    and now_ts - last_true_ts < END_GRACE:
-                state = _load_state(track[-1], [o for o in per_camera_ts[camera].get(track[-1]["ts"], [])
-                                                if o["label"] in LOAD_LABELS])
-                store.open_activity("loading", camera, obj_id, start_ts, partner, state,
-                                    {"rule": "truk diam + excavator berdekatan"})
-                opened += 1
-        else:
-            state = _load_state(track[-1], [o for o in per_camera_ts[camera].get(track[-1]["ts"], [])
-                                            if o["label"] in LOAD_LABELS]) if track[-1]["x"] is not None else None
-            if state:
-                store.update_activity(ongoing["id"], load_after=state)
-            # tutup bila syarat sudah tidak terpenuhi melewati masa tenggang
-            reference = last_true_ts or ongoing["start_ts"]
-            if now_ts - reference >= END_GRACE:
-                duration = reference - ongoing["start_ts"]
-                if duration < MIN_DURATION:
-                    store.delete_activity(ongoing["id"])
-                    discarded += 1
-                else:
-                    store.update_activity(ongoing["id"], end_ts=reference)
-                    closed += 1
+        for type_ in ("loading", "dumping", "idle"):
+            start_ts, last_ts, partner = _last_run(timeline, type_)
+            ongoing = store.ongoing_activity(type_, obj_id)
+            if ongoing is None:
+                if start_ts and last_ts and last_ts - start_ts >= MIN_DURATION[type_] \
+                        and now_ts - last_ts < END_GRACE:
+                    store.open_activity(type_, camera, obj_id, start_ts, partner,
+                                        _load_state(last, others_now) if last["x"] is not None else None,
+                                        {"rule": RULE[type_]})
+                    changed["opened"] += 1
+            else:
+                if last["x"] is not None:
+                    state = _load_state(last, others_now)
+                    if state:
+                        store.update_activity(ongoing["id"], load_after=state)
+                reference = last_ts or ongoing["start_ts"]
+                if now_ts - reference >= END_GRACE:
+                    if reference - ongoing["start_ts"] < MIN_DURATION[type_]:
+                        store.delete_activity(ongoing["id"])
+                        changed["discarded"] += 1
+                    else:
+                        store.update_activity(ongoing["id"], end_ts=reference)
+                        changed["closed"] += 1
 
-    return {"objects": len(by_object), "opened": opened, "closed": closed, "discarded": discarded}
+    return {"objects": len(by_object), **changed}
+
+
+def utilization(since_ts: float, camera: str | None = None) -> list[dict]:
+    """Berapa lama tiap truk berada di tiap keadaan, dihitung ulang dari sampel.
+
+    Sengaja dihitung dari sampel, bukan dari tabel aktivitas, supaya waktu yang terlalu pendek untuk
+    diakui sebagai aktivitas pun tetap terhitung — jadi jumlah seluruh keadaan sama dengan lama truk
+    itu terlihat.
+    """
+    rows = store.samples_since(since_ts, camera)
+    by_object: dict[str, list] = defaultdict(list)
+    per_camera_ts: dict[str, dict] = defaultdict(lambda: defaultdict(list))
+    for r in rows:
+        by_object[r["object_id"]].append(r)
+        per_camera_ts[r["camera"]][r["ts"]].append(r)
+
+    out = []
+    for obj_id, track in by_object.items():
+        if track[-1]["label"] != "truck" or len(track) < 2:
+            continue
+        cam = track[-1]["camera"]
+        seconds: dict[str, float] = defaultdict(float)
+        loads: set[str] = set()
+        for i, s in enumerate(track[:-1]):
+            dt = min(track[i + 1]["ts"] - s["ts"], END_GRACE)   # jeda panjang tidak ikut dihitung
+            st, partner = state_at(s, per_camera_ts[cam].get(s["ts"], []), track)
+            seconds[st] += dt
+            if partner:
+                loads.add(partner)
+        total = sum(seconds.values())
+        out.append({
+            "truck_id": obj_id,
+            "camera": cam,
+            "seen_seconds": round(total, 1),
+            "seconds": {k: round(v, 1) for k, v in sorted(seconds.items())},
+            "idle_share": round(seconds["idle"] / total, 3) if total else None,
+            "excavators": sorted(loads),
+        })
+    return sorted(out, key=lambda r: r["seen_seconds"], reverse=True)
+
+
+def operations(since_ts: float, camera: str | None = None) -> list[dict]:
+    """Rekap per kamera: berapa truk terlihat, berapa kali dimuat/menumpah, dan berapa waktu terbuang.
+
+    Inilah bentuk angka yang biasanya dicari pengawas lapangan. Yang belum bisa dijawab dari sini
+    adalah siklus penuh per truk (muat -> angkut -> tumpah -> kembali), karena truknya belum dikenali
+    satuan antar kamera.
+    """
+    per_truck = utilization(since_ts, camera)
+    acts = store.activities(camera=camera, since_ts=since_ts, limit=1000)
+
+    by_cam: dict[str, dict] = {}
+    for t in per_truck:
+        c = by_cam.setdefault(t["camera"], {
+            "camera": t["camera"], "trucks": 0, "seen_seconds": 0.0,
+            "seconds": defaultdict(float), "events": defaultdict(list), "excavators": set()})
+        c["trucks"] += 1
+        c["seen_seconds"] += t["seen_seconds"]
+        for k, v in t["seconds"].items():
+            c["seconds"][k] += v
+        c["excavators"].update(t["excavators"])
+
+    for a in acts:
+        c = by_cam.get(a["camera"])
+        if c is None or a["end_ts"] is None:
+            continue
+        c["events"][a["type"]].append(a["end_ts"] - a["start_ts"])
+
+    out = []
+    for c in by_cam.values():
+        total = sum(c["seconds"].values())
+        out.append({
+            "camera": c["camera"],
+            "trucks_seen": c["trucks"],
+            "truck_seconds": round(total, 1),
+            "seconds": {k: round(v, 1) for k, v in sorted(c["seconds"].items())},
+            "idle_share": round(c["seconds"]["idle"] / total, 3) if total else None,
+            "events": {k: {"count": len(v), "average_seconds": round(sum(v) / len(v), 1)}
+                       for k, v in sorted(c["events"].items()) if v},
+            "excavators_seen": len(c["excavators"]),
+        })
+    return sorted(out, key=lambda r: r["truck_seconds"], reverse=True)
