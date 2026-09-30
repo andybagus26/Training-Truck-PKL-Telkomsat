@@ -47,6 +47,7 @@ class LiveObjects:
         self.connected = False
         self.messages = 0
         self.last_message_ts: float | None = None
+        self.connected_at: float | None = None
         self.last_error: str | None = None
 
     # ---------- ukuran frame ----------
@@ -88,6 +89,7 @@ class LiveObjects:
     def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code == 0:
             self.connected = True
+            self.connected_at = time.time()
             self.last_error = None
             client.subscribe(MQTT_TOPIC)
             logger.info("tersambung ke MQTT %s:%s, berlangganan %s", MQTT_HOST, MQTT_PORT, MQTT_TOPIC)

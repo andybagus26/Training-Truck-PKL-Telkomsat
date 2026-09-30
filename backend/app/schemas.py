@@ -134,6 +134,8 @@ class MqttStatus(BaseModel):
     messages: int = 0
     last_message: datetime | None = None
     tracked_objects: int = Field(default=0, description="Objek yang sedang terlihat menurut kabar terakhir")
+    receiving: bool | None = Field(default=None, description="False bila Frigate sedang melacak objek tetapi "
+                                   "tidak ada kabar MQTT yang masuk; kosong bila belum bisa dinilai")
     last_error: str | None = None
 
 
@@ -162,4 +164,5 @@ class PollerStatus(BaseModel):
     samples_in_db: int | None = None
     activities_in_db: int | None = None
     source: str = Field(default="", description="Asal sampel: 'mqtt' (posisi terkini) atau 'rest' (cadangan)")
+    warning: str | None = Field(default=None, description="Peringatan bila data aktivitas tidak bisa dipercaya")
     mqtt: MqttStatus | None = None
