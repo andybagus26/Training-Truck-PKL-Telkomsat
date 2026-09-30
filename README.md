@@ -126,6 +126,34 @@ dalam kotak truk ikut terhapus.
 Konfigurasi di `frigate/config.yml` juga berisi contoh zone dengan `loitering_time`, untuk menandai truk
 yang berada terlalu lama di area loading.
 
+### Membaca warna kotak di Frigate
+
+Kotak pada tampilan Frigate menunjukkan jenis objek sekaligus keadaannya:
+
+| Tampilan | Artinya |
+|---|---|
+| Kotak tebal berwarna label | Objek terdeteksi pada frame ini dan sedang bergerak |
+| Kotak tipis putih/abu-abu | Objek dianggap diam (stationary); warnanya tidak lagi mengikuti label |
+| Kotak tipis biru | Objek tidak terdeteksi pada frame ini, tetapi posisinya masih dipertahankan pelacak |
+
+Warna tiap label pada model v6:
+
+| Label | Warna |
+|---|---|
+| `truck` | pink |
+| `full_load` | biru tua |
+| `empty_load` | biru muda |
+| `excavator` | hijau |
+| `bed_raised` | oranye kecokelatan |
+
+Warna diberikan Frigate berdasarkan labelmap, jadi bisa berubah bila model atau labelmap diganti; pada v5
+misalnya, excavator tidak berwarna hijau. Kotak tipis biru mudah tertukar dengan `full_load` dan
+`empty_load`, jadi bedakan dari ketebalan garis dan tulisan labelnya.
+
+Kotak yang berkedip atau berganti warna antar frame umumnya wajar: skor dan status diam dihitung ulang
+tiap frame. Yang perlu diperhatikan adalah objek yang hilang lalu muncul sebagai objek baru, karena itu
+memecah satu kejadian menjadi beberapa event.
+
 ## API untuk sistem lain
 
 Folder [`backend/`](backend/) berisi API FastAPI yang mengambil data deteksi dari Frigate dan

@@ -24,6 +24,7 @@ Semua ambang bisa diubah lewat environment variable, karena nilainya bergantung 
 kebiasaan di lokasi.
 """
 import bisect
+import json
 import os
 from collections import defaultdict
 
@@ -148,6 +149,34 @@ def _last_run(timeline: list, want: str) -> tuple[float | None, float | None, st
     return start, end, partner
 
 
+def _close_orphans(seen: set, changed: dict) -> None:
+    """Tutup aktivitas yang masih tercatat berlangsung padahal truknya tak punya sampel di jendela.
+
+    Normalnya aktivitas ditutup END_GRACE detik setelah syaratnya hilang. Itu hanya terlewat bila
+    evaluate() berhenti berjalan melebihi jendelanya, mis. backend mati atau Frigate dan MQTT tak
+    terjangkau; tanpa ini aktivitasnya tercatat berlangsung selamanya. Waktu selesai dihitung dengan
+    aturan yang sama seperti penutupan biasa, dari seluruh sampel truk yang masih tersimpan.
+    """
+    for act in store.activities(ongoing_only=True, limit=1000):
+        if act["truck_id"] in seen:
+            continue
+        track = store.object_track(act["truck_id"])
+        last_ts = None
+        if track:
+            others_by_ts: dict = defaultdict(list)
+            for r in store.samples_since(track[0]["ts"], act["camera"]):
+                if r["ts"] <= track[-1]["ts"]:
+                    others_by_ts[r["ts"]].append(r)
+            _, last_ts, _ = _last_run(_timeline(track, others_by_ts), act["type"])
+        if last_ts and last_ts >= act["start_ts"]:
+            store.update_activity(act["id"], end_ts=last_ts)
+        else:
+            # sampelnya sudah terhapus: yang pasti hanya aktivitas ini sempat bertahan MIN_DURATION
+            meta = {**json.loads(act["meta"] or "{}"), "end_estimated": True}
+            store.update_activity(act["id"], end_ts=act["start_ts"] + MIN_DURATION[act["type"]], meta=meta)
+        changed["closed"] += 1
+
+
 def evaluate(now_ts: float, window: float = 600.0) -> dict:
     """Perbarui aktivitas semua truk berdasarkan sampel terakhir. Kembalikan ringkasan perubahan."""
     rows = store.samples_since(now_ts - window)
@@ -190,6 +219,7 @@ def evaluate(now_ts: float, window: float = 600.0) -> dict:
                         store.update_activity(ongoing["id"], end_ts=reference)
                         changed["closed"] += 1
 
+    _close_orphans(set(by_object), changed)
     return {"objects": len(by_object), **changed}
 
 

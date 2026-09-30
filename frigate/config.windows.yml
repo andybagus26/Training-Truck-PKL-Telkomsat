@@ -22,8 +22,8 @@ model:
   height: 320
   input_tensor: nchw
   input_dtype: float
-  path: /models/mining_truck_yolov9t_320_v5.onnx
-  labelmap_path: /models/labelmap_v5.txt
+  path: /models/mining_truck_yolov9t_320_v6.onnx
+  labelmap_path: /models/labelmap_v6.txt
 
 # ─── OBJECTS ──────────────────────────────────────────────────────────────
 objects:
@@ -32,7 +32,11 @@ objects:
     - full_load
     - empty_load
     - excavator
+    - bed_raised
   filters:
+    bed_raised:
+      min_score: 0.5
+      threshold: 0.6
     excavator:
       min_score: 0.5
       threshold: 0.6

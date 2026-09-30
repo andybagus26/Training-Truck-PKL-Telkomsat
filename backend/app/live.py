@@ -5,10 +5,13 @@ snapshot terbaik objek diambil, bukan posisi sekarang. Dua objek yang sama-sama 
 bisa punya kotak dari detik yang berbeda, sehingga tidak bisa dipakai menilai "excavator berdekatan
 dengan truk" atau "kotak muatan di dalam kotak truk".
 
-Frigate mengirim ulang tiap objek ke topik `frigate/events` paling lambat 5 detik sekali, dan lebih
-sering lagi bila objek bergerak atau berpindah zone. Isinya posisi terkini, status diam, dan zone
-yang sedang ditempati. Modul ini menampung pesan itu sebagai gambaran keadaan sekarang; poller
-tinggal memotretnya secara berkala.
+Frigate mengirim kabar tiap objek ke topik `frigate/events` saat objek bergerak, berpindah zone, atau
+berubah status; isinya posisi terkini, status diam, dan zone yang sedang ditempati. Objek yang diam
+justru jarang dikabarkan: pada pengujian, truk yang sedang dimuat hanya mendapat 1 kabar dalam 100
+detik, padahal Frigate terus melacaknya. Karena itu objek baru dianggap hilang saat Frigate
+mengirim kabar "end", atau setelah STALE_AFTER detik tanpa kabar sebagai pengaman bila kabar itu
+terlewat. Modul ini menampung pesan itu sebagai gambaran keadaan sekarang; poller tinggal
+memotretnya secara berkala.
 
 Kotak dari MQTT berupa pixel (x1, y1, x2, y2) pada resolusi deteksi, jadi perlu dinormalkan ke 0-1
 memakai ukuran tiap kamera dari `/api/config`.
@@ -28,7 +31,9 @@ MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_USER = os.getenv("MQTT_USER") or None
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD") or None
 MQTT_TOPIC = os.getenv("MQTT_TOPIC", "frigate/events")
-STALE_AFTER = float(os.getenv("MQTT_STALE_AFTER", "30"))  # detik tanpa kabar sebelum objek dilupakan
+# Detik tanpa kabar sebelum objek dilupakan. Harus jauh di atas jeda kabar untuk objek diam (sekitar
+# 1 menit); dengan 30 detik, truk yang dimuat atau idle hilang separuh waktu dan aktivitasnya terpecah.
+STALE_AFTER = float(os.getenv("MQTT_STALE_AFTER", "120"))
 
 
 class LiveObjects:
@@ -42,6 +47,7 @@ class LiveObjects:
         self.connected = False
         self.messages = 0
         self.last_message_ts: float | None = None
+        self.connected_at: float | None = None
         self.last_error: str | None = None
 
     # ---------- ukuran frame ----------
@@ -83,6 +89,7 @@ class LiveObjects:
     def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
         if reason_code == 0:
             self.connected = True
+            self.connected_at = time.time()
             self.last_error = None
             client.subscribe(MQTT_TOPIC)
             logger.info("tersambung ke MQTT %s:%s, berlangganan %s", MQTT_HOST, MQTT_PORT, MQTT_TOPIC)

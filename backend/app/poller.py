@@ -25,9 +25,15 @@ POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "1"))       # detik antar penga
 # tidak ikut terhapus. Pada 5 kamera, sampel bertambah sekitar 11 MB/jam.
 RETENTION_HOURS = float(os.getenv("RETENTION_HOURS", "6"))   # sampel lama dibuang setelah ini
 POLL_LIMIT = int(os.getenv("POLL_LIMIT", "200"))
+# Broker tersambung belum berarti Frigate mengirim data (mqtt.enabled lupa dinyalakan, host atau
+# topic_prefix berbeda). Frigate mengabari objek diam kira-kira sekali per menit, jadi baru dianggap
+# diam bila lebih lama dari ini sementara Frigate sedang melacak objek.
+MQTT_SILENT_AFTER = float(os.getenv("MQTT_SILENT_AFTER", "180"))
+FLOW_CHECK_EVERY = 30                                         # detik antar pengecekan ke Frigate
 
 state: dict = {"running": False, "last_poll": None, "last_error": None,
-               "polls": 0, "samples": 0, "source": "belum mulai"}
+               "polls": 0, "samples": 0, "source": "belum mulai",
+               "mqtt_receiving": None, "warning": None, "last_flow_check": 0.0}
 
 
 async def refresh_frame_sizes() -> None:
@@ -62,6 +68,32 @@ async def _rows_from_rest(ts: float) -> list[tuple]:
     return rows
 
 
+async def _check_mqtt_flow(ts: float) -> None:
+    """Tandai bila Frigate sedang melacak objek tapi tidak ada kabar MQTT yang masuk.
+
+    Tanpa ini aktivitas bisa berhenti tercatat sama sekali sementara /poller tetap melapor
+    tersambung. Jalur data tidak diubah; hanya status dan peringatannya.
+    """
+    if ts - state["last_flow_check"] < FLOW_CHECK_EVERY:
+        return
+    state["last_flow_check"] = ts
+    try:
+        tracking = bool(await client.get_json("/api/events", {"in_progress": 1, "limit": 1}))
+    except Exception:
+        return  # Frigate tak terjangkau: sudah terlihat di /health, status lama dibiarkan
+    last = max(live.last_message_ts or 0.0, live.connected_at or ts)
+    silent = tracking and ts - last > MQTT_SILENT_AFTER
+    if silent:
+        state["mqtt_receiving"] = False
+        state["warning"] = (f"Broker MQTT tersambung, tetapi tidak ada kabar dari Frigate selama {ts - last:.0f} "
+                            "detik padahal Frigate sedang melacak objek, jadi aktivitas tidak tercatat. "
+                            "Cek mqtt.enabled, host, dan topic_prefix di config Frigate.")
+    else:
+        recent = live.last_message_ts is not None and ts - live.last_message_ts <= MQTT_SILENT_AFTER
+        state["mqtt_receiving"] = True if recent else None
+        state["warning"] = None
+
+
 async def _poll_once() -> None:
     ts = time.time()
     if live.connected and not live.has_dimensions():
@@ -69,8 +101,10 @@ async def _poll_once() -> None:
         await refresh_frame_sizes()
     if live.connected:
         rows, source = _rows_from_mqtt(ts), "mqtt"
+        await _check_mqtt_flow(ts)
     else:
         rows, source = await _rows_from_rest(ts), "rest (kotak tidak terkini)"
+        state["mqtt_receiving"], state["warning"] = None, None
     if rows:
         state["samples"] += store.add_samples(rows)
     evaluate(ts)

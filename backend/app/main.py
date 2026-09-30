@@ -419,11 +419,12 @@ async def poller_status() -> PollerStatus:
         running=poller.state["running"], last_poll=_to_dt(poller.state["last_poll"]),
         polls=poller.state["polls"], samples_collected=poller.state["samples"],
         last_error=poller.state["last_error"], samples_in_db=c["samples"],
-        activities_in_db=c["activities"], source=poller.state["source"],
+        activities_in_db=c["activities"], source=poller.state["source"], warning=poller.state["warning"],
         mqtt=MqttStatus(
             connected=live.connected, broker=live.status()["broker"], topic=live.status()["topic"],
             messages=live.messages, last_message=_to_dt(live.last_message_ts),
-            tracked_objects=live.status()["tracked_objects"], last_error=live.last_error,
+            tracked_objects=live.status()["tracked_objects"], receiving=poller.state["mqtt_receiving"],
+            last_error=live.last_error,
         ),
     )
 
