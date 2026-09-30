@@ -26,7 +26,7 @@ from .frigate import FRIGATE_URL, client
 from .live import live
 from .schemas import (LABELS, Activity, Box, CameraInfo, CameraStats, CameraSummary, Detection,
                       DetectorStats, Health, LabelCount, MqttStatus, PollerStatus, Stats, Summary,
-                      CameraOperations, TruckState, TruckUtilization)
+                      CameraOperations, LiveObject, TruckState, TruckUtilization)
 from .store import store
 
 
@@ -347,6 +347,44 @@ async def trucks_live(camera: str | None = Query(None)) -> list[TruckState]:
     return sorted(out, key=lambda t: t.last_seen, reverse=True)
 
 
+@app.get("/cameras/{camera}/objects", response_model=list[LiveObject], tags=["kamera"],
+         summary="Objek yang sedang terlihat di sebuah kamera, lengkap dengan keadaan truknya")
+async def camera_objects(camera: str) -> list[LiveObject]:
+    """Dipakai menggambar lapisan keadaan di atas gambar kamera.
+
+    Kotaknya relatif 0-1, jadi bisa langsung dikalikan dengan ukuran gambar berapa pun.
+    """
+    now = datetime.now(timezone.utc).timestamp()
+    rows = store.samples_since(now - 5, camera)
+    by_object: dict[str, list] = defaultdict(list)
+    for r in rows:
+        by_object[r["object_id"]].append(r)
+
+    latest = [t[-1] for t in by_object.values() if t[-1]["x"] is not None]
+    if not latest:
+        return []
+    terbaru = max(s["ts"] for s in latest)
+    sekarang = [s for s in latest if s["ts"] >= terbaru - 1]   # satu putaran sampel saja
+
+    out: list[LiveObject] = []
+    for s in sekarang:
+        obj = LiveObject(
+            id=s["object_id"], label=s["label"], score=round(s["score"], 3) if s["score"] else None,
+            box=Box(x=s["x"], y=s["y"], w=s["w"], h=s["h"]),
+        )
+        if s["label"] == "truck":
+            track = by_object[s["object_id"]]
+            state, _ = state_at(s, sekarang, track)
+            obj.state = state
+            obj.load_state = _load_state(s, [o for o in sekarang if o["label"] in LOAD_LABELS])
+            act = next((a for a in (store.ongoing_activity(t, s["object_id"])
+                                    for t in ("dumping", "loading", "idle")) if a), None)
+            if act:
+                obj.state_seconds = round(s["ts"] - act["start_ts"], 1)
+        out.append(obj)
+    return out
+
+
 @app.get("/utilization", response_model=list[TruckUtilization], tags=["aktivitas"],
          summary="Berapa lama tiap truk dimuat, menumpah, menganggur, dan bergerak")
 async def truck_utilization(
@@ -389,9 +427,9 @@ async def poller_status() -> PollerStatus:
         ),
     )
 
-# Halaman pemantau lokal (backend/dashboard/, tidak ikut di-commit) disajikan di /monitor.
-# Disajikan dari sini supaya satu asal dengan API-nya, jadi tidak terganjal aturan CORS browser.
-# Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa halaman itu.
+# Halaman pemantau (backend/dashboard/) disajikan di /monitor. Ditaruh satu asal dengan API-nya
+# supaya tidak terganjal aturan CORS browser — halaman HTTPS dari luar tidak boleh menghubungi
+# localhost. Dilewati bila foldernya tidak ada, jadi API tetap jalan tanpa halaman itu.
 MONITOR_DIR = FsPath(__file__).resolve().parents[1] / "dashboard"
 if MONITOR_DIR.is_dir():
     app.mount("/monitor", StaticFiles(directory=MONITOR_DIR, html=True), name="monitor")

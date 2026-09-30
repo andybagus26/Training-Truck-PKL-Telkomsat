@@ -118,6 +118,16 @@ class TruckState(BaseModel):
     activity_seconds: float | None = None
 
 
+class LiveObject(BaseModel):
+    id: str
+    label: str
+    box: Box
+    score: float | None = None
+    state: str | None = Field(default=None, description="Untuk truk: moving, loading, dumping, atau idle")
+    state_seconds: float | None = Field(default=None, description="Sudah berapa lama dalam keadaan itu")
+    load_state: str | None = None
+
+
 class TruckUtilization(BaseModel):
     truck_id: str
     camera: str

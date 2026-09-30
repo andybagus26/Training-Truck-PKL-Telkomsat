@@ -29,8 +29,6 @@ backend/data/
 # (yang tidak membedakan huruf besar-kecil) ikut mengabaikan backend/dashboard/.
 /Dashboard/
 
-# Halaman pemantau bawaan (lokal saja, tidak ikut ter-commit)
-/backend/dashboard/
 
 # Bobot model umum yang diunduh otomatis saat percobaan (bukan bagian dari proyek)
 yolov8*.pt

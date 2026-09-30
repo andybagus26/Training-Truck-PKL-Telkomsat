@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pemantau Truk Tambang</title>
+<style>
+  :root {
+    --bg: #11131a; --panel: #191c26; --line: #262b38; --text: #e7e9ef; --muted: #8b93a7;
+    --moving: #4a9eff; --loading: #ffb020; --dumping: #c46bff; --idle: #ff5f57;
+    --excavator: #3ecf8e; --muat: #9aa4bd; --ok: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+       margin: 24px 0 10px; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 18px; }
+  .grid { display: grid; gap: 12px; }
+  .cams { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .card .body { padding: 10px 12px; }
+  .card .name { font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; }
+  .card .name small { color: var(--muted); font-weight: 400; font-size: 11px; }
+
+  /* gambar kamera + lapisan kotak */
+  .view { position: relative; aspect-ratio: 16/9; background: #000; cursor: zoom-in; }
+  .view img { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .ov { position: absolute; inset: 0; pointer-events: none; }
+  .bx { position: absolute; border: 2.5px solid; border-radius: 4px; }
+  .bx b { position: absolute; top: -19px; left: -2.5px; font-size: 12px; font-weight: 700;
+          padding: 1px 7px; border-radius: 4px; white-space: nowrap; color: #08090d; z-index: 2; }
+  .bx.thin { border-width: 2px; border-style: dashed; }
+  .bx.thin b { top: auto; bottom: -18px; font-size: 11px; font-weight: 700; }
+  .big .bx { border-width: 3.5px; }
+  .big .bx b { font-size: 17px; top: -26px; padding: 2px 9px; }
+  .big .bx.thin b { font-size: 15px; top: auto; bottom: -25px; }
+
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #0d0f15; margin: 8px 0 6px; }
+  .bar span { display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11px; color: var(--muted); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px; }
+  td { padding: 8px 10px; border-top: 1px solid var(--line); }
+  tbody tr:hover { background: #1e222e; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .b-moving  { background: rgba(74,158,255,.15);  color: var(--moving); }
+  .b-loading { background: rgba(255,176,32,.15);  color: var(--loading); }
+  .b-dumping { background: rgba(196,107,255,.15); color: var(--dumping); }
+  .b-idle    { background: rgba(255,95,87,.15);   color: var(--idle); }
+  .b-unknown { background: rgba(139,147,167,.15); color: var(--muted); }
+
+  .status { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 18px; }
+  .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+          padding: 4px 12px; font-size: 12px; color: var(--muted); }
+  .pill b { color: var(--text); font-weight: 600; }
+  .up { color: var(--ok); } .down { color: var(--idle); }
+  .muted { color: var(--muted); }
+  .empty { color: var(--muted); padding: 14px 10px; font-size: 13px; }
+
+  .ket { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; padding: 14px 16px; }
+  .ket h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+            color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .ket ul { list-style: none; margin: 0; padding: 0; }
+  .ket li { display: flex; align-items: center; gap: 9px; padding: 3px 0; font-size: 13px; }
+  .kotak { width: 26px; height: 17px; border-radius: 3px; flex: none; }
+  .kotak.tebal { border: 2.5px solid; }
+  .kotak.tipis { border: 2px dashed; }
+  .ket small { color: var(--muted); display: block; margin-top: 10px; font-size: 12px; line-height: 1.5; }
+
+  /* tampilan besar saat kamera diklik */
+  #layar { position: fixed; inset: 0; background: rgba(8,9,13,.94); display: none;
+           z-index: 50; padding: 24px; overflow: auto; }
+  #layar.on { display: block; }
+  #layar .kotak-besar { max-width: 1240px; margin: 0 auto; }
+  #layar .judul { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
+  #layar .judul h2 { margin: 0; font-size: 20px; text-transform: none; letter-spacing: 0; color: var(--text); }
+  #layar .tutup { margin-left: auto; background: var(--panel); border: 1px solid var(--line);
+                  color: var(--text); border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  #layar .view { cursor: default; border-radius: 10px; overflow: hidden; }
+  #layar .ringkas { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  @media (max-width: 640px) { body { padding: 12px; } td, th { padding: 6px; } #layar { padding: 12px; } }
+</style>
+</head>
+<body>
+  <h1>Pemantau Truk Tambang</h1>
+  <div class="sub">Data disegarkan tiap 2 detik. Rentang hitungan: 30 menit terakhir.
+    Klik gambar kamera untuk memperbesar.</div>
+
+  <div class="status" id="status"></div>
+
+  <h2>Kamera</h2>
+  <div class="grid cams" id="cams"></div>
+
+  <h2>Keterangan warna</h2>
+  <div class="card"><div class="ket">
+    <div>
+      <h3>Keadaan truk — kotak tebal</h3>
+      <ul>
+        <li><i class="kotak tebal" style="border-color:var(--moving)"></i> <b>MOVING</b> — truk sedang jalan</li>
+        <li><i class="kotak tebal" style="border-color:var(--loading)"></i> <b>LOADING</b> — berhenti, dimuat excavator</li>
+        <li><i class="kotak tebal" style="border-color:var(--dumping)"></i> <b>DUMPING</b> — berhenti, bak terangkat</li>
+        <li><i class="kotak tebal" style="border-color:var(--idle)"></i> <b>IDLE</b> — berhenti tanpa dilayani</li>
+      </ul>
+      <small>Angka di belakang label, misalnya <b>LOADING 24s</b>, adalah lama truk berada di keadaan itu
+      dan terus berjalan selama aktivitasnya berlangsung.</small>
+    </div>
+    <div>
+      <h3>Objek lain — kotak putus-putus</h3>
+      <ul>
+        <li><i class="kotak tipis" style="border-color:var(--excavator)"></i> <b>excavator</b> — alat gali pemuat</li>
+        <li><i class="kotak tipis" style="border-color:var(--dumping)"></i> <b>bed_raised</b> — bak truk sedang terangkat</li>
+        <li><i class="kotak tipis" style="border-color:var(--muat)"></i> <b>full_load</b> — bak berisi muatan</li>
+        <li><i class="kotak tipis" style="border-color:var(--muat)"></i> <b>empty_load</b> — bak kosong</li>
+      </ul>
+      <small>Keempatnya hasil deteksi langsung dari model. Keadaan truk di sebelah kiri bukan hasil
+      deteksi, melainkan kesimpulan dari gerak truk dan objek di sekitarnya.</small>
+    </div>
+    <div>
+      <h3>Batang waktu di tiap kamera</h3>
+      <ul>
+        <li><i class="kotak" style="background:var(--moving)"></i> waktu bergerak</li>
+        <li><i class="kotak" style="background:var(--loading)"></i> waktu dimuat</li>
+        <li><i class="kotak" style="background:var(--dumping)"></i> waktu menumpah</li>
+        <li><i class="kotak" style="background:var(--idle)"></i> waktu terbuang</li>
+      </ul>
+      <small>Panjang tiap warna sebanding dengan lama waktunya. Persentase <b>menganggur</b> di atas
+      batang adalah bagian merah dibanding seluruh waktu truk terlihat.</small>
+    </div>
+  </div></div>
+
+  <h2>Truk yang sedang terlihat</h2>
+  <div class="card"><table id="live"></table></div>
+
+  <h2>Aktivitas terakhir</h2>
+  <div class="card"><table id="acts"></table></div>
+
+  <div id="layar">
+    <div class="kotak-besar">
+      <div class="judul">
+        <h2 id="layar-nama"></h2>
+        <span class="muted" id="layar-ket"></span>
+        <button class="tutup" onclick="tutupLayar()">Tutup (Esc)</button>
+      </div>
+      <div class="view big"><img id="layar-img" alt=""><div class="ov" id="layar-ov"></div></div>
+      <div class="ringkas" id="layar-ringkas"></div>
+    </div>
+  </div>
+
+<script>
+const WINDOW_MIN = 30;
+const STATES = ["moving", "loading", "dumping", "idle"];
+const COLOR = { moving: "var(--moving)", loading: "var(--loading)",
+                dumping: "var(--dumping)", idle: "var(--idle)" };
+const WARNA_LABEL = { excavator: "var(--excavator)", bed_raised: "var(--dumping)",
+                      full_load: "var(--muat)", empty_load: "var(--muat)" };
+
+const get = (path) => fetch(path).then(r => r.ok ? r.json() : Promise.reject(r.status));
+const detik = (v) => v == null ? "–" : v >= 60 ? `${Math.floor(v/60)}m ${Math.round(v%60)}s` : `${Math.round(v)}s`;
+const jam = (iso) => iso ? new Date(iso).toLocaleTimeString("id-ID", {hour12: false}) : "–";
+const badge = (s) => `<span class="badge b-${s || "unknown"}">${s || "?"}</span>`;
+
+let kameraAktif = null;      // kamera yang sedang ditampilkan besar
+let daftarKamera = [];
+
+function kotakObjek(o) {
+  const b = o.box, truk = o.label === "truck";
+  const warna = truk ? (COLOR[o.state] || "var(--muted)") : (WARNA_LABEL[o.label] || "var(--muted)");
+  const teks = truk
+    ? `${(o.state || "?").toUpperCase()}${o.state_seconds ? " " + Math.round(o.state_seconds) + "s" : ""}`
+    : o.label;
+  const gaya = `left:${b.x*100}%;top:${b.y*100}%;width:${b.w*100}%;height:${b.h*100}%;border-color:${warna}`;
+  return `<div class="bx${truk ? "" : " thin"}" style="${gaya}"><b style="background:${warna}">${teks}</b></div>`;
+}
+
+async function segarkanKamera(cam, img, ov, tinggi) {
+  if (img) img.src = `/cameras/${cam}/latest?bbox=false&height=${tinggi}&t=${Date.now()}`;
+  try {
+    const objs = await get(`/cameras/${cam}/objects`);
+    if (ov) ov.innerHTML = objs.map(kotakObjek).join("");
+    return objs;
+  } catch { return []; }
+}
+
+function segarkanSemua() {
+  document.querySelectorAll("img[data-cam]").forEach(img => {
+    const cam = img.dataset.cam;
+    segarkanKamera(cam, img, document.querySelector(`[data-ov="${cam}"]`), 360);
+  });
+  if (kameraAktif) segarkanLayar();
+}
+
+// ---------- tampilan besar ----------
+function bukaLayar(cam) {
+  kameraAktif = cam;
+  document.getElementById("layar-nama").textContent = cam;
+  document.getElementById("layar").classList.add("on");
+  segarkanLayar();
+}
+function tutupLayar() {
+  kameraAktif = null;
+  document.getElementById("layar").classList.remove("on");
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") tutupLayar(); });
+
+async function segarkanLayar() {
+  const cam = kameraAktif;
+  const objs = await segarkanKamera(cam, document.getElementById("layar-img"),
+                                    document.getElementById("layar-ov"), 720);
+  const truk = objs.filter(o => o.label === "truck");
+  document.getElementById("layar-ket").textContent =
+    `${truk.length} truk · ${objs.length} objek terdeteksi`;
+  document.getElementById("layar-ringkas").innerHTML = truk.length
+    ? truk.map(t => `<span class="pill">${badge(t.state)}
+        ${t.state_seconds ? "<b>" + detik(t.state_seconds) + "</b>" : ""}
+        ${t.load_state ? "· " + t.load_state : ""}</span>`).join("")
+    : `<span class="pill">Tidak ada truk di layar saat ini</span>`;
+}
+
+// ---------- bagian lain ----------
+function renderStatus(health, poller) {
+  const mq = poller.mqtt || {};
+  document.getElementById("status").innerHTML = `
+    <span class="pill">Frigate <b class="${health.frigate_reachable ? "up" : "down"}">
+      ${health.frigate_reachable ? "tersambung" : "tidak terjangkau"}</b></span>
+    <span class="pill">Sumber data <b>${poller.source || "–"}</b></span>
+    <span class="pill">MQTT <b class="${mq.connected ? "up" : "down"}">
+      ${mq.connected ? "tersambung" : "putus"}</b></span>
+    <span class="pill">Objek terpantau <b>${mq.tracked_objects ?? 0}</b></span>
+    <span class="pill">Aktivitas tersimpan <b>${poller.activities_in_db ?? 0}</b></span>
+    <span class="pill">Diperbarui <b>${new Date().toLocaleTimeString("id-ID", {hour12: false})}</b></span>`;
+}
+
+function isiKartu(c) {
+  const total = Object.values(c.seconds).reduce((a, b) => a + b, 0) || 1;
+  const bar = STATES.filter(s => c.seconds[s])
+    .map(s => `<span style="width:${c.seconds[s] / total * 100}%;background:${COLOR[s]}"></span>`).join("");
+  const legend = STATES.filter(s => c.seconds[s])
+    .map(s => `<span><i class="dot" style="background:${COLOR[s]}"></i>${s} ${detik(c.seconds[s])}</span>`).join("");
+  const ev = Object.entries(c.events || {})
+    .map(([k, v]) => `${k} ${v.count}× rata-rata ${detik(v.average_seconds)}`).join(" · ") || "belum ada yang selesai";
+  return `<div class="name">${c.camera} <small>klik untuk perbesar</small></div>
+    <div class="muted" style="font-size:12px">${c.trucks_seen} truk ·
+      menganggur ${c.idle_share == null ? "–" : Math.round(c.idle_share * 100) + "%"}</div>
+    <div class="bar">${bar}</div>
+    <div class="legend">${legend}</div>
+    <div class="muted" style="font-size:11px;margin-top:8px">${ev}</div>`;
+}
+
+// Daftar kartu mengikuti kamera yang aktif di Frigate, bukan kamera yang kebetulan punya data.
+// Tanpa ini, kamera yang baru dimatikan masih tampil sampai jendela hitungannya lewat, dan kamera
+// yang belum dilewati truk sama sekali tidak pernah muncul.
+function gabungkan(cams, ops) {
+  const rekap = Object.fromEntries(ops.map(o => [o.camera, o]));
+  return cams.filter(c => c.enabled).map(c => rekap[c.name] || {
+    camera: c.name, trucks_seen: 0, truck_seconds: 0, seconds: {}, idle_share: null, events: {},
+  });
+}
+
+function renderCameras(ops) {
+  const host = document.getElementById("cams");
+  if (!ops.length) { host.innerHTML = `<div class="empty">Belum ada truk terpantau.</div>`; daftarKamera = []; return; }
+  const kunci = ops.map(c => c.camera).join(",");
+  if (kunci !== daftarKamera.join(",")) {
+    // susunan kamera berubah: bangun ulang kartunya
+    daftarKamera = ops.map(c => c.camera);
+    host.innerHTML = ops.map(c => `<div class="card">
+      <div class="view" onclick="bukaLayar('${c.camera}')">
+        <img data-cam="${c.camera}" alt="${c.camera}"><div class="ov" data-ov="${c.camera}"></div>
+      </div>
+      <div class="body" data-body="${c.camera}">${isiKartu(c)}</div></div>`).join("");
+    segarkanSemua();
+    return;
+  }
+  // kamera sama: cukup perbarui teksnya, gambar punya siklus sendiri supaya tidak berkedip
+  ops.forEach(c => {
+    const body = host.querySelector(`[data-body="${c.camera}"]`);
+    if (body) body.innerHTML = isiKartu(c);
+  });
+}
+
+function renderLive(rows) {
+  const t = document.getElementById("live");
+  if (!rows.length) { t.innerHTML = `<tr><td class="empty">Tidak ada truk terlihat saat ini.</td></tr>`; return; }
+  t.innerHTML = `<thead><tr><th>Kamera</th><th>Truk</th><th>Keadaan</th><th>Muatan</th>
+      <th>Excavator dekat</th><th>Aktivitas berjalan</th></tr></thead><tbody>` +
+    rows.map(r => `<tr>
+      <td>${r.camera}</td>
+      <td class="muted">…${r.truck_id.slice(-7)}</td>
+      <td>${badge(r.state)}</td>
+      <td>${r.load_state || "<span class='muted'>–</span>"}</td>
+      <td class="muted">${r.excavator_nearby ? "…" + r.excavator_nearby.slice(-7) : "–"}</td>
+      <td>${r.activity ? `${r.activity} · ${detik(r.activity_seconds)}` : "<span class='muted'>–</span>"}</td>
+    </tr>`).join("") + `</tbody>`;
+}
+
+function renderActs(rows) {
+  const t = document.getElementById("acts");
+  if (!rows.length) { t.innerHTML = `<tr><td class="empty">Belum ada aktivitas tercatat.</td></tr>`; return; }
+  t.innerHTML = `<thead><tr><th>Jenis</th><th>Kamera</th><th>Mulai</th><th>Durasi</th>
+      <th>Muatan</th><th>Status</th></tr></thead><tbody>` +
+    rows.slice(0, 20).map(a => `<tr>
+      <td>${badge(a.type)}</td>
+      <td>${a.camera}</td>
+      <td class="muted">${jam(a.start_time)}</td>
+      <td>${detik(a.duration_seconds)}</td>
+      <td class="muted">${a.load_before || "–"} → ${a.load_after || "–"}</td>
+      <td>${a.ongoing ? "<span class='up'>berjalan</span>" : "<span class='muted'>selesai</span>"}</td>
+    </tr>`).join("") + `</tbody>`;
+}
+
+async function tick() {
+  try {
+    const [health, poller, cams, ops, live, acts] = await Promise.all([
+      get("/health"), get("/poller"), get("/cameras"),
+      get(`/operations?since_minutes=${WINDOW_MIN}`),
+      get("/trucks/live"),
+      get(`/activities?since_minutes=${WINDOW_MIN}&limit=20`),
+    ]);
+    renderStatus(health, poller);
+    renderCameras(gabungkan(cams, ops));
+    renderLive(live);
+    renderActs(acts);
+  } catch (e) {
+    document.getElementById("status").innerHTML =
+      `<span class="pill">Backend <b class="down">tidak terjangkau</b> — pastikan uvicorn berjalan di port 8000</span>`;
+  }
+}
+
+tick();
+setInterval(tick, 3000);
+setInterval(segarkanSemua, 2000);
+</script>
+</body>
+</html>

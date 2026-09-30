@@ -76,6 +76,7 @@ record:
 cameras:
   # Simulasi CCTV statis: 43 gambar test dataset (tidak dipakai saat training), tiap gambar 4 detik.
   site_cctv_test:
+    enabled: false
     ffmpeg:
       inputs:
         - path: /media/test-videos/site_cctv_test.mp4

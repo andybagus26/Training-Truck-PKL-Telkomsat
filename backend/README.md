@@ -76,6 +76,7 @@ menunjukkan sumber yang sedang dipakai.
 | `GET /labels` | Daftar class: `truck`, `full_load`, `empty_load`, `excavator`, `bed_raised` |
 | `GET /cameras` | Daftar kamera: status aktif, fps deteksi, resolusi, zone, class yang dilacak |
 | `GET /cameras/{camera}/latest` | Frame terbaru sebuah kamera (JPEG). Parameter: `bbox`, `height` |
+| `GET /cameras/{camera}/objects` | Objek yang sedang terlihat di sebuah kamera beserta keadaan truknya, kotak relatif 0-1 |
 | `GET /detections` | Daftar deteksi yang sudah dirapikan |
 | `GET /detections/{id}` | Detail satu deteksi |
 | `GET /detections/{id}/snapshot` | Gambar saat objek terdeteksi (JPEG). Parameter: `bbox` |
@@ -138,6 +139,21 @@ menghasilkan rentang 21-30 detik, sedangkan truk yang sekadar melintas dekat exc
 detik. Pada pengujian 6 menit, 10 aktivitas loading terbentuk dengan 93-100% waktunya benar-benar
 memenuhi syarat, dan 42 truk yang lewat di kamera tanpa excavator tidak menghasilkan aktivitas palsu.
 Nilainya bergantung sudut kamera, jadi perlu disetel ulang untuk lokasi lain.
+
+### Halaman pemantau
+
+`http://localhost:8000/monitor/` — satu berkas HTML tanpa library luar, isinya gambar tiap kamera
+dengan kotak keadaan digambar di atasnya, batang pembagian waktu per kamera, tabel truk yang sedang
+terlihat, dan riwayat aktivitas. Klik gambar kamera untuk memperbesar.
+
+Halaman ini disajikan dari backend, bukan dibuka sebagai berkas biasa, supaya satu asal dengan
+API-nya. Halaman HTTPS dari luar tidak diizinkan browser menghubungi `localhost`, jadi menaruhnya di
+sini adalah cara paling sederhana yang tetap bekerja.
+
+Warna kotaknya mengikuti keadaan truk — biru bergerak, kuning dimuat, ungu menumpah, merah
+menganggur — sementara objek hasil deteksi langsung (`excavator`, `bed_raised`, `full_load`,
+`empty_load`) digambar putus-putus. Pembedaan itu disengaja: kotak tebal adalah kesimpulan sistem,
+kotak putus-putus adalah yang benar-benar dilihat model.
 
 ### Menghitung waktu terbuang
 
