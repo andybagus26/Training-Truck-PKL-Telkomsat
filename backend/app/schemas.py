@@ -60,10 +60,13 @@ class Summary(BaseModel):
     per_camera: list[CameraSummary]
 
 
+# Angka CPU per proses (detektor, kamera) mengikuti Frigate: persen dari SATU inti prosesor, jadi bisa lebih
+# dari 100 pada mesin berinti banyak. Angka RAM dan angka SystemLoad adalah persen dari seluruh mesin.
 class DetectorStats(BaseModel):
     name: str
     inference_speed_ms: float | None = None
     detection_start: float | None = None
+    cpu_percent: float | None = Field(default=None, description="CPU proses detektor di Frigate, persen dari satu inti")
 
 
 class CameraStats(BaseModel):
@@ -72,6 +75,14 @@ class CameraStats(BaseModel):
     process_fps: float | None = None
     detection_fps: float | None = None
     skipped_fps: float | None = None
+    cpu_percent: float | None = Field(default=None, description="CPU proses kamera (deteksi, pengambilan gambar, "
+                                      "ffmpeg), persen dari satu inti")
+    mem_percent: float | None = Field(default=None, description="RAM proses kamera, persen dari seluruh RAM mesin")
+
+
+class SystemLoad(BaseModel):
+    cpu_percent: float | None = Field(default=None, description="CPU seluruh mesin tempat Frigate berjalan, 0-100")
+    mem_percent: float | None = Field(default=None, description="RAM seluruh mesin tempat Frigate berjalan, 0-100")
 
 
 class Stats(BaseModel):
@@ -79,6 +90,7 @@ class Stats(BaseModel):
     cameras: list[CameraStats]
     frigate_version: str | None = None
     uptime_seconds: float | None = None
+    system: SystemLoad | None = None
 
 
 class Health(BaseModel):

@@ -25,7 +25,7 @@ from .activity import (LOAD_LABELS, NEAR_GAP, STILL_WINDOW, _gap, _is_still, _lo
 from .frigate import FRIGATE_URL, client
 from .live import live
 from .schemas import (LABELS, Activity, Box, CameraInfo, CameraStats, CameraSummary, Detection,
-                      DetectorStats, Health, LabelCount, MqttStatus, PollerStatus, Stats, Summary,
+                      DetectorStats, Health, LabelCount, MqttStatus, PollerStatus, Stats, Summary, SystemLoad,
                       CameraOperations, LiveObject, TruckState, TruckUtilization)
 from .store import store
 
@@ -258,18 +258,36 @@ async def summary(
 async def stats() -> Stats:
     s = await client.get_json("/api/stats")
     service = s.get("service") or {}
+    usage = s.get("cpu_usages") or {}   # Frigate mengirim angkanya sebagai teks, per nomor proses
+
+    def num(v) -> float | None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def total(pids, key: str) -> float | None:
+        vals = [num((usage.get(str(p)) or {}).get(key)) for p in pids if p is not None]
+        vals = [v for v in vals if v is not None]
+        return round(sum(vals), 1) if vals else None
+
+    whole = usage.get("frigate.full_system") or {}
     return Stats(
         detectors=[
-            DetectorStats(name=n, inference_speed_ms=d.get("inference_speed"), detection_start=d.get("detection_start"))
+            DetectorStats(name=n, inference_speed_ms=d.get("inference_speed"), detection_start=d.get("detection_start"),
+                          cpu_percent=total([d.get("pid")], "cpu"))
             for n, d in (s.get("detectors") or {}).items()
         ],
         cameras=[
             CameraStats(camera=n, camera_fps=c.get("camera_fps"), process_fps=c.get("process_fps"),
-                        detection_fps=c.get("detection_fps"), skipped_fps=c.get("skipped_fps"))
+                        detection_fps=c.get("detection_fps"), skipped_fps=c.get("skipped_fps"),
+                        cpu_percent=total([c.get("pid"), c.get("capture_pid"), c.get("ffmpeg_pid")], "cpu"),
+                        mem_percent=total([c.get("pid"), c.get("capture_pid"), c.get("ffmpeg_pid")], "mem"))
             for n, c in (s.get("cameras") or {}).items()
         ],
         frigate_version=service.get("version"),
         uptime_seconds=service.get("uptime"),
+        system=SystemLoad(cpu_percent=num(whole.get("cpu")), mem_percent=num(whole.get("mem"))) if whole else None,
     )
 
 

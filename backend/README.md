@@ -81,7 +81,7 @@ menunjukkan sumber yang sedang dipakai.
 | `GET /detections/{id}` | Detail satu deteksi |
 | `GET /detections/{id}/snapshot` | Gambar saat objek terdeteksi (JPEG). Parameter: `bbox` |
 | `GET /summary` | Rekap jumlah deteksi per label dan per kamera dalam rentang waktu |
-| `GET /stats` | Performa detektor dan kamera |
+| `GET /stats` | Performa detektor dan kamera, serta pemakaian CPU/RAM mesin Frigate (`system`) dan tiap kamera |
 | `GET /activities` | Aktivitas yang tersimpul: `loading`, `dumping`, `idle`. Parameter: `type`, `camera`, `since_minutes`, `ongoing_only`, `limit` |
 | `GET /activities/{id}` | Detail satu aktivitas |
 | `GET /trucks/live` | Keadaan tiap truk yang sedang terlihat: `moving`/`loading`/`dumping`/`idle`, status muatan, excavator terdekat |
