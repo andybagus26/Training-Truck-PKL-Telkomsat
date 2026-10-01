@@ -29,11 +29,11 @@ Urutannya dari atas ke bawah:
   - Klik gambar untuk memperbesar. Tampilan besar terus diperbarui dan menampilkan keadaan tiap truk.
   - Kartu tiap kamera menampilkan kecepatan proses serta CPU dan RAM yang dipakai kamera itu.
   - Arti warnanya ada di **Keterangan warna kotak** di bawah daftar kamera.
+- **Deteksi terbaru**: foto, waktu, kamera, label, skor, dan durasi. Klik baris untuk melihat detailnya.
 - **Aktivitas truk**: jumlah truk yang sedang dimuat, dumping, idle, dan bergerak; sumber data, jumlah objek
   terpantau, dan aktivitas tersimpan; bagian waktu tiap keadaan per kamera; tabel truk yang sedang terlihat;
   dan daftar aktivitas terakhir.
 - **Grafik**: jumlah deteksi per label dan per kamera.
-- **Deteksi terbaru**: foto, waktu, kamera, label, skor, dan durasi. Klik baris untuk melihat detailnya.
 
 ### Warna kotak di gambar kamera
 
