@@ -24,8 +24,8 @@ export/
 apple-silicon-detector/
 backend/data/
 
-
-
+# Halaman pemantau lokal; tampilan resmi proyek ada di folder Dashboard/
+/backend/dashboard/
 
 # Bobot model umum yang diunduh otomatis saat percobaan (bukan bagian dari proyek)
 yolov8*.pt
