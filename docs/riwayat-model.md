@@ -3,14 +3,35 @@
 Daftar sumber data tiap versi beserta link ada di [`sumber-dataset.md`](sumber-dataset.md).
 
 Catatan perkembangan model: apa yang ditambahkan di tiap versi, alasannya, dan hasil pengujiannya.
-Semua versi memakai arsitektur yang sama (YOLOv9-t, input 320×320, 3 class: `truck`, `full_load`, `empty_load`).
+Semua versi memakai arsitektur yang sama (YOLOv9-t, input 320×320). Jumlah class bertambah seiring
+bertambahnya tugas: tiga di v1–v4 (`truck`, `full_load`, `empty_load`), `excavator` di v5, dan
+`bed_raised` di v6.
 
 ## Ringkasan
 
+### Perkembangan tiap versi
+
+| | v1 | v2 | v3 | v4 | v5 | v6 |
+|---|---|---|---|---|---|---|
+| Gambar unik | 430 | 3.085 | 3.283 | 3.375 | 3.375 | 3.578 |
+| Jumlah class | 3 | 3 | 3 | 3 | 4 | 5 |
+| Class baru | — | — | — | — | `excavator` | `bed_raised` |
+| Bobot awal | COCO | v1 | v2 | v3 | model excavator sementara | v5 |
+| Yang ditambahkan | dataset site | data publik & contoh negatif | adegan loading | kondisi malam | label excavator di seluruh data | rekaman dumping |
+| Masalah yang dijawab | — | kotak seukuran frame penuh | truk tak terdeteksi saat dimuat | gagal total di malam hari | excavator dikira truk | dumping tak bisa dibedakan dari berhenti |
+
+Semua versi memakai transfer learning. Titik awalnya bobot YOLOv9-t hasil latihan di COCO, lalu tiap
+versi melanjutkan bobot versi sebelumnya — bukan mengulang dari nol. Tanpa itu, dataset sebesar ini
+jauh dari cukup untuk melatih detektor, apalagi `bed_raised` yang hanya punya 203 frame asli.
+
+### Kemampuan v1–v5
+
+Diukur pada set uji yang disusun dari dataset v2 dan v3. **Kedua dataset itu sudah dihapus saat
+pembersihan**, jadi angka di tabel ini tidak bisa dihitung ulang dan tidak sebanding langsung dengan
+tabel v5-vs-v6 di bawahnya.
+
 | | v1 | v2 | v3 | v4 | v5 |
 |---|---|---|---|---|---|
-| Gambar unik | 430 | 3.085 | 3.283 | 3.375 | 3.375 |
-| Class | 3 | 3 | 3 | 3 | 4 |
 | Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 |
 | Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 | 0.805 |
 | Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 | 0.995 |
@@ -18,6 +39,24 @@ Semua versi memakai arsitektur yang sama (YOLOv9-t, input 320×320, 3 class: `tr
 | Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 |
 
 \* v1 mendeteksi truk di 20 frame, tetapi disertai 26 kotak salah seukuran frame penuh.
+
+### v5 dibanding v6
+
+Diukur pada test set yang sama persis (187 gambar). Rinciannya ada di
+[`hasil-training.md`](hasil-training.md).
+
+| | v5 | v6 |
+|---|---|---|
+| Gabungan, mAP50 | 0.891 | 0.886 |
+| `truck` mAP50 / recall | 0.915 / 0.720 | 0.903 / **0.766** |
+| `excavator` mAP50 / recall | 0.851 / 0.789 | 0.850 / **0.824** |
+| Site asli (43 gambar) | 0.995 | 0.995 |
+| Site asli versi malam | 0.995 | 0.995 |
+| Truk dikenali saat menumpah muatan | 0–100%, rata-rata rendah | **91–100%** |
+| Bak terangkat salah dibaca `excavator` | sampai 37% frame | **0%** |
+
+Penambahan class menurunkan mAP gabungan 0,005 — masih dalam rentang wajar — sementara recall naik
+dan kesalahan pada adegan dumping hilang.
 
 ---
 
@@ -111,31 +150,6 @@ training diambil siang hari.
 | Test site asli versi malam, mAP50 | 0.786 | 0.995 |
 | Video loading quarry: truk / muatan | 22 / 19 dari 24 | 24 / 22 dari 24 |
 | Test tambang lain (rf100), `truck` mAP50 | 0.822 | 0.805 |
-
----
-
-## Yang masih belum selesai
-
-- **Muatan dari sudut rendah.** Pada video truk melintas di jalan hauling, truk terdeteksi (22/24 frame)
-  tetapi muatannya tidak sama sekali, bahkan pada ambang 0.05. Material yang dibawa (bijih abu-abu gelap)
-  sangat berbeda dari seluruh contoh muatan di data training, dan hanya 7 contoh `full_load` baru yang
-  lolos pemeriksaan di v4 — terlalu sedikit untuk mengubah perilaku model.
-- **`empty_load`** tetap class terlemah: hanya 102 kotak di seluruh dataset.
-- **Truk yang sedang menumpahkan muatan** (bak terangkat) jarang terdeteksi; adegan ini tidak ada di data training.
-- **Kemampuan di tambang lain** turun tipis sejak v2 (rf100 `truck` 0.840 → 0.805), efek samping dari
-  penambahan data yang sangat spesifik pada v3 dan v4.
-
-Perbaikan paling efektif untuk semua poin di atas adalah beberapa ratus frame berlabel dari kamera site
-yang dituju, bukan penambahan data publik.
-
-## Catatan kebersihan data
-
-- Video yang dipakai untuk menguji tidak pernah masuk data training. Untuk video Cat 775, segmen demo
-  (detik 0–31) dikecualikan saat pengambilan frame, sementara bagian lain video tersebut ikut dilatih —
-  ini setara dengan alur "ambil sedikit frame dari site tujuan, lalu fine-tune".
-- Test set site asli (43 gambar) tidak berubah sejak v1, sehingga angkanya bisa dibandingkan antarversi.
-- Label muatan pada dataset rf100 berasal dari prediksi model v1, bukan pemeriksaan manual, sehingga
-  angka `full_load`/`empty_load` pada test rf100 perlu dibaca dengan hati-hati.
 
 ---
 
@@ -245,3 +259,35 @@ pernah muncul pada truk berbak normal.
 hanya 1 yang terdeteksi baik; yang berdebu tebal, yang truknya tertutup, dan yang baknya hanya
 terlihat sebagian semuanya gagal. Ini konsekuensi langsung dari hanya 5 adegan yang tersedia, dan
 baru bisa diperbaiki dengan rekaman dari lokasi sebenarnya.
+
+---
+
+## Yang masih belum selesai
+
+Diperbarui setelah v6.
+
+- **`bed_raised` baru kenal lima sudut kamera.** Dari 6 rekaman dumping yang tidak dilatih, hanya 1
+  yang terdeteksi baik; yang berdebu tebal, truknya tertutup tepi timbunan, atau baknya hanya
+  terlihat sebagian masih gagal. Ini akibat langsung dari sedikitnya rekaman dumping yang bisa
+  dicari — hanya 203 frame dari 5 adegan.
+- **`empty_load` tetap class terlemah**, 244 kotak di seluruh dataset dibanding 4.303 untuk `truck`.
+  Pada test set, mAP50-nya 0.855, terendah bersama `excavator`.
+- **Muatan dari sudut rendah.** Pada video truk melintas di jalan hauling, truk terdeteksi tetapi
+  muatannya tidak, bahkan pada ambang 0.05. Material yang dibawa sangat berbeda dari seluruh contoh
+  muatan di data training. Catatan ini berasal dari pengujian v4 dan belum diukur ulang di v6.
+- **Kemampuan di tambang lain** tidak membaik: pada set rf100, `truck` 0.871 di v5 menjadi 0.856 di
+  v6. Penambahan data yang sangat spesifik memang cenderung menggeser model ke arah site tujuan.
+
+Perbaikan paling efektif untuk semua poin di atas sama seperti sejak v3: beberapa ratus frame
+berlabel dari kamera site yang dituju, bukan penambahan data publik.
+
+## Catatan kebersihan data
+
+- Video yang dipakai untuk menguji tidak pernah masuk data training. Untuk video Cat 775, segmen demo
+  (detik 0–31) dikecualikan saat pengambilan frame, sementara bagian lain video tersebut ikut dilatih —
+  ini setara dengan alur "ambil sedikit frame dari site tujuan, lalu fine-tune".
+- Test set site asli (43 gambar) tidak berubah sejak v1, sehingga angkanya bisa dibandingkan antarversi.
+- Label muatan pada dataset rf100 berasal dari prediksi model v1, bukan pemeriksaan manual, sehingga
+  angka `full_load`/`empty_load` pada test rf100 perlu dibaca dengan hati-hati.
+
+---
