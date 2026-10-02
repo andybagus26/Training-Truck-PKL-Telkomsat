@@ -12,9 +12,11 @@ masuk ke dataset akhir (setelah pemeriksaan manual).
 | v3 | 6 video publik (adegan loading) | 198 | 3.283 |
 | v4 | 5 video publik (malam & hauling) | 92 | 3.375 |
 | v5 | tidak ada gambar baru — label excavator ditambahkan pada data yang sudah ada | 0 | 3.375 |
+| v6 | 5 video publik (adegan dumping) | 203 | 3.578 |
 
 Selain itu, v4 memakai 854 gambar malam sintetis yang dibuat dari gambar di atas
-(`scripts/night_aug.py`), jadi bukan data baru.
+(`scripts/night_aug.py`), dan v6 menggandakan 203 frame dumping menjadi 3 salinan di split train —
+keduanya bukan data baru, hanya cara agar bagian yang sedikit tidak tenggelam saat training.
 
 ## v1 — dataset site
 

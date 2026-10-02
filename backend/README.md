@@ -140,20 +140,18 @@ detik. Pada pengujian 6 menit, 10 aktivitas loading terbentuk dengan 93-100% wak
 memenuhi syarat, dan 42 truk yang lewat di kamera tanpa excavator tidak menghasilkan aktivitas palsu.
 Nilainya bergantung sudut kamera, jadi perlu disetel ulang untuk lokasi lain.
 
-### Halaman pemantau
+### Melihat hasilnya secara visual
 
-`http://localhost:8000/monitor/` — satu berkas HTML tanpa library luar, isinya gambar tiap kamera
-dengan kotak keadaan digambar di atasnya, batang pembagian waktu per kamera, tabel truk yang sedang
-terlihat, dan riwayat aktivitas. Klik gambar kamera untuk memperbesar.
+Tampilan pemantauan ada di folder [`Dashboard/`](../Dashboard/) pada akar repositori.
 
-Halaman ini disajikan dari backend, bukan dibuka sebagai berkas biasa, supaya satu asal dengan
-API-nya. Halaman HTTPS dari luar tidak diizinkan browser menghubungi `localhost`, jadi menaruhnya di
-sini adalah cara paling sederhana yang tetap bekerja.
+Endpoint `GET /cameras/{camera}/objects` menyediakan bahan untuk menggambar lapisan di atas gambar
+kamera: tiap objek yang sedang terlihat beserta kotaknya, dan untuk truk ditambah keadaannya
+(`moving`, `loading`, `dumping`, `idle`) serta sudah berapa lama. Koordinatnya relatif 0-1, jadi bisa
+langsung dikalikan dengan ukuran gambar berapa pun.
 
-Warna kotaknya mengikuti keadaan truk — biru bergerak, kuning dimuat, ungu menumpah, merah
-menganggur — sementara objek hasil deteksi langsung (`excavator`, `bed_raised`, `full_load`,
-`empty_load`) digambar putus-putus. Pembedaan itu disengaja: kotak tebal adalah kesimpulan sistem,
-kotak putus-putus adalah yang benar-benar dilihat model.
+Perlu dibedakan saat menampilkannya: `excavator`, `bed_raised`, `full_load`, dan `empty_load` adalah
+hasil deteksi langsung model, sedangkan keadaan truk bukan hasil deteksi melainkan kesimpulan dari
+gerak truk dan objek di sekitarnya.
 
 ### Menghitung waktu terbuang
 
@@ -218,13 +216,14 @@ berapa pun.
   dan tidak ikut di-commit). Menghapus file itu hanya menghapus riwayat aktivitas.
 - **Endpoint snapshot** memerlukan `snapshots.enabled: true` di konfigurasi Frigate. Bila sebuah
   deteksi tidak punya gambar, `has_snapshot` bernilai `false` dan `snapshot_url` kosong.
-- **Penamaan class** mengikuti model yang aktif (v5). Pada model versi pertama, truk bernama
-  `mining_truck`; sejak itu digabung menjadi `truck`, dan `excavator` ditambahkan pada v5.
+- **Penamaan class** mengikuti model yang aktif (v6). Pada model versi pertama truk bernama
+  `mining_truck`, sejak itu digabung menjadi `truck`; `excavator` ditambahkan pada v5 dan
+  `bed_raised` pada v6.
 - **Penanganan error**: Frigate mati atau tidak terjangkau menghasilkan `503`, terlalu lama merespons
   `504`, dan error dari Frigate diteruskan sebagai `502`. Jadi pemanggil bisa membedakan masalah
   jaringan dari data yang memang tidak ada (`404`).
-- **Deteksi dumping menunggu model v6**, yang menambah class `bed_raised` untuk bak yang terangkat.
-  Aturannya sudah terpasang, jadi begitu model itu aktif di Frigate, aktivitas `dumping` langsung
-  tercatat tanpa perlu mengubah backend.
+- **Deteksi dumping bergantung pada class `bed_raised`** dari model v6. Class itu baru mengenal lima
+  sudut kamera, jadi di sudut yang jauh berbeda dumping bisa terlewat — truknya tetap terbaca, hanya
+  keadaannya jatuh ke `idle` karena baknya tidak dikenali terangkat.
 - CORS dibuka untuk semua origin agar mudah dipakai dashboard saat pengembangan. Batasi sebelum
   dipakai di jaringan yang lebih luas.
