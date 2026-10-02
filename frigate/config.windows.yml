@@ -1,5 +1,7 @@
 mqtt:
-  enabled: false
+  enabled: true
+  host: localhost
+  port: 1883
 
 # ─── DETECTOR ─────────────────────────────────────────────────────────────
 # Windows: uses Frigate's built-in ONNX Runtime CPU detector.
@@ -11,9 +13,11 @@ detectors:
 
 # ─── FFMPEG (Hardware Acceleration) ────────────────────────────────────────
 # VAAPI helps decode video using the AMD Radeon 780M iGPU, reducing CPU load.
-# If errors occur or it is not detected in WSL, simply remove this block — it will fall back to software decode automatically.
-ffmpeg:
-  hwaccel_args: preset-vaapi
+# Di WSL sering kali device VAAPI tidak terdeteksi sehingga ffmpeg crash dengan error:
+# "Option hwaccel cannot be applied to output url vaapi".
+# Uncomment jika VAAPI sudah terkonfigurasi dengan benar di environment Docker/WSL.
+# ffmpeg:
+#   hwaccel_args: preset-vaapi
 
 # ─── MODEL ────────────────────────────────────────────────────────────────
 model:
@@ -100,7 +104,7 @@ cameras:
   truck_cam_3:
     ffmpeg:
       inputs:
-        - path: /config/cctv_truck3.mp4
+        - path: /config/truck_cam_3.mp4
           input_args: -re -stream_loop -1
           roles:
             - detect
@@ -116,7 +120,51 @@ cameras:
   truck_excavator_night:
     ffmpeg:
       inputs:
-        - path: /config/truck n excavator at night.mp4
+        - path: /config/truck_excavator_night.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      width: 1280
+      height: 720
+      enabled: true
+    record:
+      enabled: true
+
+  cctv5:
+    ffmpeg:
+      inputs:
+        - path: /config/cctv5.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      enabled: true
+    record:
+      enabled: true
+
+  cctv_truck4:
+    ffmpeg:
+      inputs:
+        - path: /config/cctv_truck4.mp4
+          input_args: -re -stream_loop -1
+          roles:
+            - detect
+            - record
+    detect:
+      fps: 5
+      enabled: true
+    record:
+      enabled: true
+
+  truck_cam_2:
+    ffmpeg:
+      inputs:
+        - path: /config/cctv_truck2.mp4
           input_args: -re -stream_loop -1
           roles:
             - detect

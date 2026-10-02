@@ -16,7 +16,7 @@ from pathlib import Path as FsPath
 
 from fastapi import FastAPI, HTTPException, Path, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import poller
@@ -93,6 +93,11 @@ def _as_detection(ev: dict) -> Detection:
         has_clip=bool(ev.get("has_clip")),
         snapshot_url=f"/detections/{ev['id']}/snapshot" if ev.get("has_snapshot") else None,
     )
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/dashboard/")
 
 
 @app.get("/health", response_model=Health, tags=["status"], summary="Status API dan koneksi ke Frigate")

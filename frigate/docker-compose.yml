@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  frigate:
+    image: frigate:0.18-0
+    container_name: frigate-truk
+    restart: unless-stopped
+    privileged: true
+    shm_size: "256m"
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./config.windows.yml:/config/config.yml:ro
+      - ./models:/models:ro
+      - ./cctv_short.mp4:/config/cctv_short.mp4:ro
+      - ./cctv5.mp4:/config/cctv5.mp4:ro
+      - ./cctv_truck2.mp4:/config/cctv_truck2.mp4:ro
+      - ./truck_cam_3.mp4:/config/truck_cam_3.mp4:ro
+      - ./truck_excavator_night.mp4:/config/truck_excavator_night.mp4:ro
+      - ./cctv_truck4.mp4:/config/cctv_truck4.mp4:ro
+      - frigate-recordings:/media/frigate/recordings
+      - frigate-clips:/media/frigate/clips
+    environment:
+      - FRIGATE_MQTT_HOST=mosquitto
+      - FRIGATE_MQTT_PORT=1883
+    networks:
+      - frigate-net
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: frigate-mqtt
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - frigate-net
+
+volumes:
+  frigate-recordings:
+  frigate-clips:
+
+networks:
+  frigate-net:
+    driver: bridge
