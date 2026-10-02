@@ -140,6 +140,7 @@ Gambar dari batch validasi, kotak digambar oleh model sendiri.
 - Seluruh angka diukur pada 320×320, ukuran yang sama dengan yang dipakai Frigate.
 - Test set tidak memuat adegan dumping, jadi `bed_raised` tidak muncul di tabel test. Ukuran untuk
   class itu ada di bagian rekaman dumping.
-- Set uji yang dipakai dokumentasi v1–v4 dulu berasal dari dataset v2 dan v3 yang sudah dihapus saat
-  pembersihan, sehingga angka versi-versi itu tidak bisa dihitung ulang. Perbandingan di halaman ini
-  hanya antara v5 dan v6, yang keduanya diukur pada test set yang sama.
+- Perbandingan di halaman ini hanya antara v5 dan v6, karena keduanya diukur pada test set yang sama.
+  Untuk perbandingan sampai v1, lihat tabel "Kemampuan v1–v6" di
+  [`riwayat-model.md`](riwayat-model.md) — di situ kolom v6 diisi dengan mengukur ulang memakai bahan
+  yang masih ada, dan baris yang setnya sudah terhapus diberi catatan tersendiri.

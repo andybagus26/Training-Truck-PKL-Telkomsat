@@ -24,21 +24,31 @@ Semua versi memakai transfer learning. Titik awalnya bobot YOLOv9-t hasil latiha
 versi melanjutkan bobot versi sebelumnya — bukan mengulang dari nol. Tanpa itu, dataset sebesar ini
 jauh dari cukup untuk melatih detektor, apalagi `bed_raised` yang hanya punya 203 frame asli.
 
-### Kemampuan v1–v5
+### Kemampuan v1–v6
 
-Diukur pada set uji yang disusun dari dataset v2 dan v3. **Kedua dataset itu sudah dihapus saat
-pembersihan**, jadi angka di tabel ini tidak bisa dihitung ulang dan tidak sebanding langsung dengan
-tabel v5-vs-v6 di bawahnya.
+Angka v1–v4 diukur pada set uji yang disusun dari dataset v2 dan v3. **Kedua dataset itu sudah
+dihapus saat pembersihan**, jadi kolom-kolom lama tidak bisa dihitung ulang. Kolom v6 diisi dengan
+mengukur ulang memakai bahan yang masih ada — set site asli (43 gambar), versi malam sintetisnya,
+dan dua video uji — sehingga empat dari lima baris tetap sebanding.
 
-| | v1 | v2 | v3 | v4 | v5 |
-|---|---|---|---|---|---|
-| Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 |
-| Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 | 0.805 |
-| Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 | 0.995 |
-| Video loading quarry: frame dengan truk | 20/24* | 5/24 | 22/24 | 24/24 | 24/24 |
-| Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 |
+| | v1 | v2 | v3 | v4 | v5 | v6 |
+|---|---|---|---|---|---|---|
+| Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | **0.995** |
+| Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 | 0.995 | **0.995** |
+| Video loading quarry: frame dengan truk | 20/24\* | 5/24 | 22/24 | 24/24 | 24/24 | **24/24** |
+| Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 | **23/24**\*\* |
+| Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 | 0.805 | lihat catatan\*\*\* |
 
-\* v1 mendeteksi truk di 20 frame, tetapi disertai 26 kotak salah seukuran frame penuh.
+\* v1 mendeteksi truk di 20 frame, tetapi disertai 26 kotak salah seukuran frame penuh. Pada v6,
+kotak raksasa semacam itu nol di kedua video.
+
+\*\* Saat diukur ulang bersama v6, model v5 juga menghasilkan 23/24 pada video yang sama — bukan
+24/24 seperti tercatat dulu. Selisih satu frame ini berasal dari pengambilan sampel frame, bukan dari
+perubahan kemampuan model.
+
+\*\*\* Set rf100 yang lama sudah ikut terhapus. Pada set rf100 yang ada sekarang (144 gambar di test
+set v6), `truck` bernilai 0.871 untuk v5 dan 0.856 untuk v6 — sebanding satu sama lain, tapi tidak
+sebanding dengan angka 0.805 di kolom sebelah kiri karena isi setnya berbeda.
 
 ### v5 dibanding v6
 
