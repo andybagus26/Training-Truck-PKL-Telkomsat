@@ -26,29 +26,45 @@ jauh dari cukup untuk melatih detektor, apalagi `bed_raised` yang hanya punya 20
 
 ### Kemampuan v1–v6
 
-Angka v1–v4 diukur pada set uji yang disusun dari dataset v2 dan v3. **Kedua dataset itu sudah
-dihapus saat pembersihan**, jadi kolom-kolom lama tidak bisa dihitung ulang. Kolom v6 diisi dengan
-mengukur ulang memakai bahan yang masih ada — set site asli (43 gambar), versi malam sintetisnya,
-dan dua video uji — sehingga empat dari lima baris tetap sebanding.
+Empat ukuran di bawah ini memakai bahan uji yang sama sejak v1, jadi angkanya bisa dibandingkan lurus
+antar versi.
 
 | | v1 | v2 | v3 | v4 | v5 | v6 |
 |---|---|---|---|---|---|---|
 | Test site asli, mAP50 | 0.995 | 0.995 | 0.995 | 0.995 | 0.995 | **0.995** |
 | Test site asli versi malam, mAP50 | — | — | 0.786 | 0.995 | 0.995 | **0.995** |
-| Video loading quarry: frame dengan truk | 20/24\* | 5/24 | 22/24 | 24/24 | 24/24 | **24/24** |
-| Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 | **23/24**\*\* |
-| Test tambang lain (rf100), `truck` mAP50 | 0.207 | 0.840 | 0.822 | 0.805 | 0.805 | lihat catatan\*\*\* |
+| Video loading quarry: frame dengan truk | 20/24 | 5/24 | 22/24 | 24/24 | 24/24 | **24/24** |
+| Video malam: frame dengan truk | — | — | 1/24 | 24/24 | 24/24 | **23/24** |
 
-\* v1 mendeteksi truk di 20 frame, tetapi disertai 26 kotak salah seukuran frame penuh. Pada v6,
-kotak raksasa semacam itu nol di kedua video.
+Tiga hal yang perlu dibaca bersama tabel itu:
 
-\*\* Saat diukur ulang bersama v6, model v5 juga menghasilkan 23/24 pada video yang sama — bukan
-24/24 seperti tercatat dulu. Selisih satu frame ini berasal dari pengambilan sampel frame, bukan dari
-perubahan kemampuan model.
+**Angka v1 pada video quarry menipu.** Truk memang terdeteksi di 20 frame, tetapi disertai 26 kotak
+salah seukuran frame penuh. Pada v6, kotak raksasa semacam itu tidak ada sama sekali di kedua video.
 
-\*\*\* Set rf100 yang lama sudah ikut terhapus. Pada set rf100 yang ada sekarang (144 gambar di test
-set v6), `truck` bernilai 0.871 untuk v5 dan 0.856 untuk v6 — sebanding satu sama lain, tapi tidak
-sebanding dengan angka 0.805 di kolom sebelah kiri karena isi setnya berbeda.
+**Selisih satu frame pada baris terakhir bukan penurunan.** Saat diukur ulang bersama v6, model v5
+juga menghasilkan 23/24 pada video yang sama — bukan 24/24 seperti tercatat dulu. Selisihnya berasal
+dari cara frame diambil dari video, bukan dari kemampuan modelnya.
+
+**Angka v5 ke bawah tidak bisa dihitung ulang.** Set ujinya disusun dari dataset v2 dan v3 yang sudah
+dihapus saat pembersihan. Kolom v6 diisi dengan mengukur ulang memakai bahan yang masih ada: set site
+asli 43 gambar, versi malam sintetisnya, dan dua video uji di folder media Frigate.
+
+### Kemampuan di tambang lain (set rf100)
+
+Ukuran ini **tidak masuk tabel di atas**, karena set rf100 yang lama ikut terhapus dan set yang ada
+sekarang isinya berbeda. Membandingkan angkanya dengan kolom v1–v5 akan menyesatkan.
+
+Pada set rf100 yang ada sekarang (144 gambar di test set v6), diukur untuk kedua model sekaligus:
+
+| | v5 | v6 |
+|---|---|---|
+| `truck` mAP50 | 0.871 | 0.856 |
+| `excavator` mAP50 | 0.851 | 0.851 |
+
+Sebagai gambaran kasar, pada set rf100 yang lama angka `truck` adalah 0.207 di v1 lalu naik ke 0.840
+di v2, dan turun perlahan menjadi 0.805 di v4 dan v5. Arahnya sama dengan yang terlihat sekarang:
+penambahan data yang sangat spesifik untuk site tujuan memang menggeser model menjauh sedikit dari
+tambang lain.
 
 ### v5 dibanding v6
 
