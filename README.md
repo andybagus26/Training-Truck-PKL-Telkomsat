@@ -1,8 +1,11 @@
 # Deteksi Truk Tambang dengan YOLOv9 + Frigate NVR
 
 Model deteksi objek untuk memantau aktivitas tambang dari kamera CCTV: mendeteksi truk beserta status
-muatannya (bermuatan / kosong) dan excavator, lalu dijalankan di [Frigate NVR](https://frigate.video)
-sebagai custom detector.
+muatannya (bermuatan / kosong), excavator, dan bak truk yang sedang terangkat saat menumpahkan muatan,
+lalu dijalankan di [Frigate NVR](https://frigate.video) sebagai custom detector.
+
+Di atasnya ada backend yang menyimpulkan apa yang sedang dilakukan tiap truk — sedang dimuat,
+menumpahkan muatan, menganggur, atau bergerak — beserta lama tiap keadaan.
 
 Model dilatih di Mac (Apple Silicon, MPS) dan dijalankan dengan ONNX Runtime + CoreML.
 
@@ -20,22 +23,27 @@ Model siap pakai ada di `models/`.
 
 ## Hasil
 
-Test set gabungan (187 gambar: 43 dari site asli + 144 dari tambang lain):
+Model v6, test set gabungan (187 gambar: 43 dari site asli + 144 dari tambang lain). Test set ini
+tidak memuat adegan dumping, jadi `bed_raised` tidak muncul di tabel:
 
 | Class | P | R | mAP50 | mAP50-95 |
 |---|---|---|---|---|
-| truck | 0.976 | 0.720 | 0.915 | 0.741 |
-| full_load | 0.993 | 0.891 | 0.942 | 0.745 |
-| empty_load | 0.957 | 0.857 | 0.855 | 0.721 |
-| excavator | 0.906 | 0.789 | 0.851 | 0.659 |
+| truck | 0.980 | 0.766 | 0.903 | 0.750 |
+| full_load | 1.000 | 0.844 | 0.936 | 0.751 |
+| empty_load | 0.902 | 0.857 | 0.855 | 0.728 |
+| excavator | 0.887 | 0.824 | 0.850 | 0.697 |
 
-Pengujian pada video yang tidak dipakai saat training (24 frame per video):
+Jumlah kotak terdeteksi pada video yang tidak dipakai saat training (24 frame per video, ambang 0.4):
 
 | Video | truck | excavator | muatan |
 |---|---|---|---|
-| Loading di quarry (kamera statis) | 24 | 18 | 23 |
-| Operasi malam hari | 26 | 24 | — |
-| Truk melintas di jalan hauling | 31 | — | 0 |
+| Loading di quarry (kamera statis) | 24 | 20 | 23 |
+| Operasi malam hari | 25 | 27 | 0 |
+| Truk melintas di jalan hauling | 35 | 0 | 0 |
+
+Pada rekaman dumping, v6 mengenali truk di 91–100% frame dan bak terangkat di 100% frame, sementara
+v5 sempat gagal total di salah satu rekaman. Rinciannya di
+[`docs/hasil-training.md`](docs/hasil-training.md).
 
 ## Struktur
 
@@ -45,11 +53,13 @@ notebooks/        Notebook langkah demi langkah (setup, dataset, training, expor
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
 frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
 docs/             Riwayat model, sumber dataset, dan grafik hasil training
-dataset-v5-labels/  Anotasi lengkap dataset v5 (tanpa gambar) + panduan membangun ulang
-backend/          API FastAPI yang menyajikan data deteksi Frigate ke sistem lain
+dataset-v5-labels/   Anotasi dataset v5 (tanpa gambar) + panduan membangun ulang
+dataset-dump-labels/ Anotasi rekaman dumping untuk class bed_raised (tanpa gambar)
+backend/          API FastAPI yang menyajikan data deteksi dan menyimpulkan aktivitas truk
+Dashboard/        Tampilan pemantauan berbasis web
 ```
 
-- [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v5 beserta alasan tiap penambahan data
+- [`docs/riwayat-model.md`](docs/riwayat-model.md) — perkembangan v1 sampai v6 beserta alasan tiap penambahan data
 - [`docs/sumber-dataset.md`](docs/sumber-dataset.md) — daftar lengkap sumber data tiap versi, dengan link
 - [`docs/hasil-training.md`](docs/hasil-training.md) — grafik training, confusion matrix, dan contoh prediksi
 - [`backend/README.md`](backend/README.md) — daftar endpoint API dan cara menjalankannya
@@ -101,11 +111,11 @@ model:
   height: 320
   input_tensor: nchw
   input_dtype: float
-  path: /models/mining_truck_yolov9t_320_v5.onnx
-  labelmap_path: /models/labelmap_v5.txt
+  path: /models/mining_truck_yolov9t_320_v6.onnx
+  labelmap_path: /models/labelmap_v6.txt
 
 objects:
-  track: [truck, full_load, empty_load, excavator]
+  track: [truck, full_load, empty_load, excavator, bed_raised]
 ```
 
 Untuk Mac, deteksi dijalankan di host dengan
@@ -165,9 +175,12 @@ berhubungan langsung dengan Frigate.
 # dokumentasi interaktif: http://localhost:8000/docs
 ```
 
-Endpoint utama: `/detections` (dengan penyaringan kamera, label, waktu, dan skor), `/summary`,
-`/cameras`, `/stats`, serta endpoint gambar `/detections/{id}/snapshot` dan
-`/cameras/{camera}/latest`.
+Endpoint data deteksi: `/detections` (dengan penyaringan kamera, label, waktu, dan skor), `/summary`,
+`/cameras`, `/stats`, serta endpoint gambar `/detections/{id}/snapshot` dan `/cameras/{camera}/latest`.
+
+Endpoint penyimpulan aktivitas: `/activities` (loading, dumping, idle), `/trucks/live` (keadaan tiap
+truk saat ini), `/utilization` (lama tiap keadaan per truk), dan `/operations` (rekap per kamera,
+termasuk bagian waktu yang terbuang).
 
 ## Catatan penerapan
 
@@ -183,20 +196,23 @@ Endpoint utama: `/detections` (dengan penyaringan kamera, label, waktu, dan skor
   fine-tune memakai beberapa ratus frame dari kamera site tersebut.
 - Status muatan paling andal bila bak terlihat dari atas atau samping-atas. Dari sudut rendah, atau untuk
   material dengan tampilan sangat berbeda, sering tidak terdeteksi.
-- Class `empty_load` paling lemah karena contohnya paling sedikit (102 kotak).
+- Class `empty_load` paling lemah karena contohnya paling sedikit (244 kotak, dibanding 4.303 untuk
+  `truck`).
 - Wheel loader tidak dilabeli sebagai class tersendiri; mesin ini sengaja dijadikan contoh negatif agar
   tidak terdeteksi sebagai truk maupun excavator.
-- Truk yang sedang menumpahkan muatan (bak terangkat) belum terdeteksi dengan baik.
+- Class `bed_raised` baru mengenal lima sudut kamera. Dari enam rekaman dumping yang tidak dilatih,
+  hanya satu yang terdeteksi baik; rekaman berdebu tebal atau truk yang tertutup sebagian masih gagal.
 
 ## Dataset
 
-3.375 gambar unik (label excavator memakai anotasi bawaan rf100 ditambah hasil review manual):
+3.578 gambar unik (label excavator memakai anotasi bawaan rf100 ditambah hasil review manual):
 
 | Sumber | Gambar | Lisensi |
 |---|---|---|
 | [Mining truck V1.4](https://universe.roboflow.com/minitruck/mining-truck-v1.4) (site asli) | 430 | CC BY 4.0 |
 | [Roboflow 100 – excavators](https://universe.roboflow.com/roboflow-100/excavators-czvg9) | 2.655 | CC BY 4.0 |
 | Frame video publik (loading, hauling, malam), dilabeli dan diperiksa manual | 290 | hak cipta pemilik masing-masing |
+| Frame video publik (adegan dumping), dilabeli setengah manual lalu ditinjau | 203 | hak cipta pemilik masing-masing |
 
 Dataset publik dipakai untuk menambah variasi truk, sekaligus sebagai contoh negatif (excavator dan wheel
 loader) agar tidak ikut terdeteksi sebagai truk. Karena sebagian data berasal dari video publik, model ini

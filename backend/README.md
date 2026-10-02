@@ -216,13 +216,14 @@ berapa pun.
   dan tidak ikut di-commit). Menghapus file itu hanya menghapus riwayat aktivitas.
 - **Endpoint snapshot** memerlukan `snapshots.enabled: true` di konfigurasi Frigate. Bila sebuah
   deteksi tidak punya gambar, `has_snapshot` bernilai `false` dan `snapshot_url` kosong.
-- **Penamaan class** mengikuti model yang aktif (v5). Pada model versi pertama, truk bernama
-  `mining_truck`; sejak itu digabung menjadi `truck`, dan `excavator` ditambahkan pada v5.
+- **Penamaan class** mengikuti model yang aktif (v6). Pada model versi pertama truk bernama
+  `mining_truck`, sejak itu digabung menjadi `truck`; `excavator` ditambahkan pada v5 dan
+  `bed_raised` pada v6.
 - **Penanganan error**: Frigate mati atau tidak terjangkau menghasilkan `503`, terlalu lama merespons
   `504`, dan error dari Frigate diteruskan sebagai `502`. Jadi pemanggil bisa membedakan masalah
   jaringan dari data yang memang tidak ada (`404`).
-- **Deteksi dumping menunggu model v6**, yang menambah class `bed_raised` untuk bak yang terangkat.
-  Aturannya sudah terpasang, jadi begitu model itu aktif di Frigate, aktivitas `dumping` langsung
-  tercatat tanpa perlu mengubah backend.
+- **Deteksi dumping bergantung pada class `bed_raised`** dari model v6. Class itu baru mengenal lima
+  sudut kamera, jadi di sudut yang jauh berbeda dumping bisa terlewat — truknya tetap terbaca, hanya
+  keadaannya jatuh ke `idle` karena baknya tidak dikenali terangkat.
 - CORS dibuka untuk semua origin agar mudah dipakai dashboard saat pengembangan. Batasi sebelum
   dipakai di jaringan yang lebih luas.
