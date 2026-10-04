@@ -51,7 +51,7 @@ v5 sempat gagal total di salah satu rekaman. Rinciannya di
 scripts/          Script training, pembuatan dataset, pelabelan, dan evaluasi
 notebooks/        Notebook langkah demi langkah (setup, dataset, training, export ONNX) — model v1
 models/           Model siap pakai (ONNX untuk Frigate + bobot PyTorch)
-frigate/          Konfigurasi Frigate dan patch untuk Apple Silicon detector
+frigate/          Konfigurasi Frigate (Mac dan Windows), docker-compose, broker MQTT, dan patch Apple Silicon detector
 docs/             Riwayat model, sumber dataset, dan grafik hasil training
 dataset-v5-labels/   Anotasi dataset v5 (tanpa gambar) + panduan membangun ulang
 dataset-dump-labels/ Anotasi rekaman dumping untuk class bed_raised (tanpa gambar)
@@ -63,10 +63,12 @@ Dashboard/        Tampilan pemantauan berbasis web
 - [`docs/sumber-dataset.md`](docs/sumber-dataset.md) — daftar lengkap sumber data tiap versi, dengan link
 - [`docs/hasil-training.md`](docs/hasil-training.md) — grafik training, confusion matrix, dan contoh prediksi
 - [`backend/README.md`](backend/README.md) — daftar endpoint API dan cara menjalankannya
+- [`Dashboard/README.md`](Dashboard/README.md) — isi halaman pemantauan dan cara membukanya
 
 Folder `datasets/`, `runs/`, `weights/`, dan `export/` tidak ikut di-commit karena besar,
 dan bisa dibuat ulang dengan script di bawah. Anotasinya sendiri tersedia lengkap di
-[`dataset-v5-labels/`](dataset-v5-labels/) — gambarnya tidak disertakan karena sebagian berasal dari
+[`dataset-v5-labels/`](dataset-v5-labels/) dan, untuk class `bed_raised` pada v6, di
+[`dataset-dump-labels/`](dataset-dump-labels/) — gambarnya tidak disertakan karena sebagian berasal dari
 video publik yang hak ciptanya dipegang pemiliknya.
 
 ## Menjalankan
@@ -77,11 +79,15 @@ python3 -m venv .venv
 echo "ROBOFLOW_API_KEY=<api-key-anda>" > .env
 ```
 
+Di Windows, letak program di dalam `.venv` berbeda: `.venv\Scripts\pip` dan `.venv\Scripts\python`,
+bukan `.venv/bin/...`. Perintah lain di bawah tinggal menyesuaikan.
+
 Dataset dasar diunduh dari Roboflow (lihat notebook), lalu:
 
 ```bash
-# Training
-.venv/bin/python scripts/train.py --data datasets/mining-truck-v4/data.yaml --epochs 40 --batch 32
+# Training v6: fine-tune dari v5 dengan dataset yang sudah ditambah frame dumping
+.venv/bin/python scripts/train.py --data datasets/mining-truck-v6/data.yaml \
+    --weights models/mining_truck_yolov9t_320_v5.pt --epochs 50 --lr0 0.001
 
 # Evaluasi beberapa versi model sekaligus
 .venv/bin/python scripts/eval_models.py
@@ -99,6 +105,12 @@ Script pendukung:
 | `crop_review.py`, `review_grid.py` | Susun lembar pemeriksaan label untuk diperiksa manual |
 | `apply_review.py` | Terapkan hasil pemeriksaan manual menjadi dataset bersih |
 | `night_aug.py` | Buat versi malam sintetis dari gambar siang |
+| `propose_excavator.py` | Usulkan kotak excavator untuk gambar di luar rf100, lalu susun lembar pemeriksaannya |
+| `build_dataset_v5.py` | Bangun dataset 4 class (tambah `excavator`) |
+| `track_box.py` | Lacak satu kotak anotasi dari frame acuan ke frame-frame sekitarnya |
+| `review_boxes.py` | Gambar kotak hasil pelacakan ke lembar tinjauan, supaya kesalahan kelihatan sebelum dipakai |
+| `build_dump_seed.py` | Susun dataset benih untuk class `bed_raised` dari kotak hasil pelacakan |
+| `build_dataset_v6.py` | Susun dataset v6: dataset v5 ditambah class `bed_raised` dari rekaman dumping |
 
 ## Integrasi Frigate
 
@@ -136,6 +148,32 @@ dalam kotak truk ikut terhapus.
 Konfigurasi di `frigate/config.yml` juga berisi contoh zone dengan `loitering_time`, untuk menandai truk
 yang berada terlalu lama di area loading.
 
+### Windows, atau mesin tanpa Apple Silicon
+
+Folder `frigate/` juga berisi susunan siap jalan lewat Docker: `docker-compose.yml` menyalakan Frigate
+bersama broker MQTT, dengan konfigurasi `config.windows.yml`. Model diambil langsung dari `models/`, jadi
+tidak perlu disalin.
+
+```bash
+cd frigate
+docker compose up -d      # Frigate di http://localhost:5000
+```
+
+Video uji diletakkan di folder `frigate/` dengan nama yang tertulis di `docker-compose.yml`.
+
+Di sini deteksi memakai detektor `onnx` bawaan Frigate yang berjalan di CPU, karena tidak ada Neural
+Engine. Bebannya jauh lebih berat: pada pengujian 6 kamera di mesin 10 inti, detektor memakai hampir
+seluruh inti dan sebagian frame terlewat, sedangkan lewat Neural Engine pemakaian CPU sekitar 11%. Untuk
+mesin tanpa GPU, kurangi jumlah kamera atau turunkan `detect.fps`.
+
+**`mqtt.host` harus berisi nama layanan broker (`mosquitto`), bukan `localhost`.** Di dalam container,
+`localhost` berarti container Frigate sendiri, sehingga Frigate tidak pernah tersambung ke broker.
+Akibatnya backend tidak menerima posisi objek: kotak keadaan di dashboard tidak muncul dan aktivitas
+tidak tercatat, sementara Frigate-nya sendiri terlihat normal.
+
+Susunan ini sudah dicoba dengan Frigate 0.17.1 dan 0.18.0. Versi bawaannya 0.17.1; untuk memakai image
+lain, isi `FRIGATE_IMAGE` di file `frigate/.env`.
+
 ### Membaca warna kotak di Frigate
 
 Kotak pada tampilan Frigate menunjukkan jenis objek sekaligus keadaannya:
@@ -171,16 +209,35 @@ menyajikannya kembali dalam bentuk yang lebih rapi, sehingga dashboard atau sist
 berhubungan langsung dengan Frigate.
 
 ```bash
-.venv/bin/uvicorn backend.app.main:app --port 8000
+# Mac / Linux
+backend/.venv/bin/python -m uvicorn backend.app.main:app --port 8000
+
+# Windows (PowerShell)
+backend\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000
+
 # dokumentasi interaktif: http://localhost:8000/docs
 ```
+
+Cara memasang `backend/.venv` ada di [`backend/README.md`](backend/README.md). Alamat Frigate diatur
+lewat `FRIGATE_URL` (default `http://localhost:8971`). Bila Frigate dijalankan
+dengan `frigate/docker-compose.yml`, alamatnya `http://localhost:5000`; cara mengisinya di tiap sistem
+operasi ada di [`backend/README.md`](backend/README.md).
 
 Endpoint data deteksi: `/detections` (dengan penyaringan kamera, label, waktu, dan skor), `/summary`,
 `/cameras`, `/stats`, serta endpoint gambar `/detections/{id}/snapshot` dan `/cameras/{camera}/latest`.
 
 Endpoint penyimpulan aktivitas: `/activities` (loading, dumping, idle), `/trucks/live` (keadaan tiap
-truk saat ini), `/utilization` (lama tiap keadaan per truk), dan `/operations` (rekap per kamera,
-termasuk bagian waktu yang terbuang).
+truk saat ini), `/cameras/{camera}/objects` (objek yang sedang terlihat beserta keadaan truknya),
+`/utilization` (lama tiap keadaan per truk), dan `/operations` (rekap per kamera, termasuk bagian waktu
+yang terbuang). Status backend dan sambungan MQTT ada di `/health` dan `/poller`.
+
+### Dashboard
+
+Backend juga menyajikan tampilan pemantauan dari folder [`Dashboard/`](Dashboard/) di
+**http://localhost:8000/dashboard/** (alamat `http://localhost:8000/` otomatis diarahkan ke sana).
+Isinya gambar tiap kamera dengan kotak keadaan truk, daftar deteksi, aktivitas truk, grafik, serta
+pemakaian CPU dan RAM mesin Frigate. Dashboard hanya berupa HTML, CSS, dan JavaScript, jadi tidak ada
+yang perlu di-install dan tampil sama di Windows maupun Mac.
 
 ## Catatan penerapan
 

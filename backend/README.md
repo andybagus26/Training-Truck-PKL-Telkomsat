@@ -10,26 +10,49 @@ Frigate NVR  ──►  Backend FastAPI  ──►  dashboard / sistem lain
 ```
 
 Selain meneruskan data deteksi, backend mengikuti keadaan objek dari waktu ke waktu dan
-menyimpulkan **aktivitas** darinya. Tahap saat ini menangani aktivitas *loading* (truk sedang
-dimuat excavator).
+menyimpulkan **aktivitas** darinya: *loading* (truk sedang dimuat excavator), *dumping* (truk
+menumpahkan muatan), dan *idle* (truk berhenti tanpa dilayani).
 
 ## Menjalankan
 
-```bash
-pip install -r backend/requirements.txt
+Butuh Python 3.10 ke atas. Semua perintah dijalankan dari akar repositori; Frigate harus sudah
+berjalan (default `http://localhost:8971`).
 
-# Frigate harus sudah berjalan (default http://localhost:8971)
-.venv/bin/uvicorn backend.app.main:app --port 8000 --reload
+```bash
+# Mac / Linux
+python3 -m venv backend/.venv
+backend/.venv/bin/pip install -r backend/requirements.txt
+backend/.venv/bin/python -m uvicorn backend.app.main:app --port 8000 --reload
+```
+
+```powershell
+# Windows (PowerShell)
+python -m venv backend\.venv
+backend\.venv\Scripts\pip install -r backend\requirements.txt
+backend\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000 --reload
 ```
 
 Dokumentasi interaktif otomatis tersedia di **http://localhost:8000/docs**, lengkap dengan tombol
-"Try it out" untuk mencoba tiap endpoint.
+"Try it out" untuk mencoba tiap endpoint. Tampilan pemantauan ada di
+**http://localhost:8000/dashboard/**.
 
-Alamat Frigate dan timeout bisa diubah lewat environment variable:
+Alamat Frigate dan timeout bisa diubah lewat environment variable. Cara mengisinya berbeda di tiap
+sistem operasi:
 
 ```bash
-FRIGATE_URL=http://192.168.1.10:8971 FRIGATE_TIMEOUT=15 .venv/bin/uvicorn backend.app.main:app --port 8000
+# Mac / Linux: ditulis di depan perintah
+FRIGATE_URL=http://192.168.1.10:8971 FRIGATE_TIMEOUT=15 backend/.venv/bin/python -m uvicorn backend.app.main:app --port 8000
 ```
+
+```powershell
+# Windows (PowerShell): diisi dulu, baru perintahnya dijalankan
+$env:FRIGATE_URL = "http://localhost:5000"
+backend\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000
+```
+
+Bila Frigate dijalankan dengan `frigate/docker-compose.yml`, port yang dibuka adalah 5000, jadi
+`FRIGATE_URL` harus diisi `http://localhost:5000`. Tanpa itu backend mencari Frigate di port 8971 dan
+`/health` melaporkan Frigate tidak terjangkau.
 
 ### MQTT (diperlukan untuk deteksi aktivitas)
 
@@ -38,21 +61,19 @@ saat snapshot terbaik objek diambil, bukan posisi sekarang, sehingga tidak bisa 
 "excavator berdekatan dengan truk" atau "truk berhenti". Karena itu Frigate perlu disambungkan ke
 sebuah broker.
 
-Broker dijalankan berdampingan dengan Frigate (lihat `frigate/mosquitto.conf`):
+Broker dijalankan berdampingan dengan Frigate. Susunan siap pakainya ada di
+`frigate/docker-compose.yml` (layanan `mosquitto`, dengan `frigate/mosquitto.conf`):
 
 ```yaml
   mosquitto:
-    container_name: mosquitto
     image: eclipse-mosquitto:2
-    restart: always
-    volumes:
-      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/data:/mosquitto/data
     ports:
       - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
 ```
 
-lalu dinyalakan di `config.yml` Frigate:
+lalu dinyalakan di konfigurasi Frigate:
 
 ```yaml
 mqtt:
@@ -61,8 +82,15 @@ mqtt:
   port: 1883
 ```
 
+**`host` diisi nama layanan broker, bukan `localhost`.** Frigate berjalan di dalam container, dan di
+sana `localhost` berarti container itu sendiri. Bila salah, Frigate tidak pernah tersambung ke broker
+sementara backend tetap tersambung — tidak ada error yang muncul, hanya saja tidak ada satu pun kabar
+yang masuk.
+
 Backend menyambung ke `localhost:1883`; bisa diubah lewat `MQTT_HOST`, `MQTT_PORT`, `MQTT_USER`,
-`MQTT_PASSWORD`. Sambungannya dicek di `GET /poller`.
+`MQTT_PASSWORD`. Sambungannya dicek di `GET /poller`: `mqtt.messages` menunjukkan jumlah kabar yang
+sudah diterima. Bila broker tersambung tetapi tidak ada kabar selama `MQTT_SILENT_AFTER` detik padahal
+Frigate sedang melacak objek, `mqtt.receiving` menjadi `false` dan `warning` berisi penjelasannya.
 
 Tanpa broker, backend tetap jalan dengan membaca `/api/events` — daftar deteksi tetap lengkap, tapi
 deteksi aktivitas tidak bisa diandalkan karena alasan di atas. Field `source` pada `/poller`
@@ -72,6 +100,7 @@ menunjukkan sumber yang sedang dipakai.
 
 | Endpoint | Fungsi |
 |---|---|
+| `GET /` | Diarahkan ke `/dashboard/` |
 | `GET /health` | Status backend, apakah Frigate terjangkau, versi Frigate, daftar class model |
 | `GET /labels` | Daftar class: `truck`, `full_load`, `empty_load`, `excavator`, `bed_raised` |
 | `GET /cameras` | Daftar kamera: status aktif, fps deteksi, resolusi, zone, class yang dilacak |
@@ -87,7 +116,7 @@ menunjukkan sumber yang sedang dipakai.
 | `GET /trucks/live` | Keadaan tiap truk yang sedang terlihat: `moving`/`loading`/`dumping`/`idle`, status muatan, excavator terdekat |
 | `GET /utilization` | Per truk: lama tiap keadaan dan bagian waktu yang terbuang. Parameter: `camera`, `since_minutes` |
 | `GET /operations` | Per kamera: truk terlihat, total waktu tiap keadaan, jumlah dan rata-rata durasi aktivitas |
-| `GET /poller` | Status pengambilan sampel dan sambungan MQTT |
+| `GET /poller` | Status pengambilan sampel dan sambungan MQTT, termasuk peringatan bila tidak ada kabar dari Frigate |
 
 ### Penyaringan di `/detections`
 
@@ -130,6 +159,9 @@ kotak `full_load`/`empty_load` yang berada di dalam kotak truk.
 | `MIN_IDLE` | `30` | Lama minimal sebelum diakui sebagai idle, detik |
 | `END_GRACE` | `15` | Lama syarat boleh hilang sebelum aktivitas ditutup, detik |
 | `RETENTION_HOURS` | `6` | Masa simpan sampel mentah (aktivitas tidak ikut terhapus) |
+| `MQTT_STALE_AFTER` | `120` | Objek yang tidak dikabarkan selama ini dianggap sudah hilang, detik |
+| `MQTT_SILENT_AFTER` | `180` | Lama tanpa kabar MQTT sebelum `/poller` memberi peringatan, detik |
+| `DB_PATH` | `backend/data/activity.db` | Letak penyimpanan sampel dan aktivitas |
 
 Ambang idle sengaja lebih panjang: berhenti sebentar untuk manuver atau memberi jalan bukan
 pemborosan, yang dicari adalah berhenti yang benar-benar menunggu.
@@ -173,6 +205,10 @@ Ini perlu diketahui sebelum angkanya dipakai mengambil keputusan:
 - **Siklus penuh per truk belum bisa dirangkai.** Id objek Frigate berlaku per kamera dan per
   kemunculan, jadi truk yang keluar-masuk frame dihitung sebagai objek baru. Untuk menghitung ritase
   dan waktu siklus, truknya harus dikenali satuan, misalnya lewat nomor lambung.
+- **Gerak mendekati atau menjauhi kamera sulit terbaca.** "Berhenti" dinilai dari pergeseran titik
+  tengah kotak, sedangkan truk yang mundur lurus ke arah kamera hampir tidak bergeser — hanya
+  kotaknya yang membesar. Frigate pun menganggapnya diam dan berhenti mengabarkan posisinya, sehingga
+  truk itu terbaca `idle` padahal masih bergerak. Sudut kamera yang menyamping lebih aman.
 
 ### Contoh
 
@@ -225,5 +261,9 @@ berapa pun.
 - **Deteksi dumping bergantung pada class `bed_raised`** dari model v6. Class itu baru mengenal lima
   sudut kamera, jadi di sudut yang jauh berbeda dumping bisa terlewat — truknya tetap terbaca, hanya
   keadaannya jatuh ke `idle` karena baknya tidak dikenali terangkat.
+- **Daftar kamera dibaca saat backend tersambung.** Ukuran frame tiap kamera diambil sekali, jadi
+  kamera yang ditambahkan ke Frigate setelah itu terbaca `unknown` sampai backend dinyalakan ulang.
+  Urutan menyalakan tidak masalah: backend yang hidup lebih dulu akan tersambung sendiri begitu
+  Frigate dan broker siap.
 - CORS dibuka untuk semua origin agar mudah dipakai dashboard saat pengembangan. Batasi sebelum
   dipakai di jaringan yang lebih luas.

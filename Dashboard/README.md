@@ -1,41 +1,71 @@
 # Dashboard Deteksi Truk Tambang
 
-Halaman web untuk memantau hasil deteksi dan aktivitas truk secara visual. Datanya diambil dari backend
-FastAPI (`backend/`), bukan langsung dari Frigate.
+Tampilan pemantauan berbasis web: gambar tiap kamera dengan keadaan truknya, daftar deteksi, aktivitas
+truk, dan beban mesin. Seluruh datanya diambil dari backend FastAPI ([`backend/`](../backend/)), tidak
+langsung dari Frigate.
 
 ```
-Frigate  ──►  Backend FastAPI  ──►  Dashboard (halaman ini)
+Frigate NVR  ──►  Backend FastAPI  ──►  Dashboard
+(deteksi)         (rapikan & simpulkan)  (halaman ini)
 ```
 
-Tidak perlu install apa pun: cukup HTML, CSS, dan JavaScript biasa, tanpa library dari internet.
+Dashboard hanya berupa HTML, CSS, dan JavaScript tanpa library dari internet, jadi tidak ada yang perlu
+di-install dan tampil sama di Windows maupun Mac. Yang berbeda di tiap sistem operasi hanya cara
+menjalankan backend dan Frigate.
 
-| File | Isi |
+| Berkas | Isi |
 |---|---|
 | `index.html` | Kerangka halaman |
-| `style.css` | Tampilan (tema terang dan gelap mengikuti setelan perangkat) |
+| `style.css` | Tampilan; tema terang atau gelap mengikuti setelan perangkat |
 | `app.js` | Pengambilan data dari backend dan pembaruan tampilan |
+
+## Menjalankan
+
+Frigate harus sudah berjalan. Backend otomatis menyajikan folder ini di `/dashboard/` bila foldernya
+ada, jadi cukup jalankan backend dari akar repositori:
+
+```bash
+# Mac / Linux
+FRIGATE_URL=http://localhost:8971 backend/.venv/bin/python -m uvicorn backend.app.main:app --port 8000
+```
+
+```powershell
+# Windows (PowerShell)
+$env:FRIGATE_URL = "http://localhost:5000"
+backend\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000
+```
+
+Lalu buka **http://localhost:8000/dashboard/** (alamat `http://localhost:8000/` otomatis diarahkan ke
+sana). `FRIGATE_URL` diisi alamat Frigate yang dipakai: `http://localhost:5000` bila Frigate dijalankan
+dengan `frigate/docker-compose.yml`. Cara memasang `backend/.venv` ada di
+[`backend/README.md`](../backend/README.md).
+
+Keadaan truk (dimuat, dumping, idle) baru bisa dinilai bila Frigate dan backend tersambung ke broker
+MQTT; cara menyalakannya juga ada di `backend/README.md`.
+
+Bila halaman dibuka dari tempat lain, misalnya berkasnya dibuka langsung, alamat backend ditentukan
+lewat parameter `api`:
+
+```
+index.html?api=http://localhost:8000
+```
+
+Setelah berkas di folder ini diubah, muat ulang halaman dengan Cmd + Shift + R (Mac) atau Ctrl + F5
+(Windows), karena browser kadang masih memakai versi lama.
 
 ## Isi halaman
 
-Urutannya dari atas ke bawah:
+| Bagian | Isi |
+|---|---|
+| Status | Backend, Frigate, kecepatan detektor, pemakaian CPU dan RAM, serta sambungan MQTT |
+| Filter | Rentang waktu, kamera, label, pilihan kotak di gambar kamera, dan tombol jeda |
+| Ringkasan | Total deteksi, jumlah truk, excavator, dan objek yang masih terlihat |
+| Kamera | Gambar terbaru tiap kamera (tiap 3 detik) dengan kotak di atas tiap objek; klik untuk memperbesar |
+| Deteksi terbaru | Foto, waktu, kamera, label, skor, dan durasi; klik baris untuk detailnya |
+| Aktivitas truk | Jumlah truk per keadaan, bagian waktu tiap keadaan per kamera, truk yang sedang terlihat, dan aktivitas terakhir |
+| Grafik | Jumlah deteksi per label dan per kamera |
 
-- **Status** (pojok kanan atas): backend, Frigate, kecepatan detektor, pemakaian **CPU** dan **RAM**, serta
-  sambungan MQTT untuk aktivitas.
-- **Filter**: rentang waktu, kamera, label, pilihan **Kotak di kamera**, dan tombol **Jeda**.
-- **Ringkasan**: total deteksi, jumlah truk, excavator, dan objek yang masih terlihat.
-- **Kamera**: gambar terbaru tiap kamera, diperbarui tiap 3 detik, dengan kotak di atas tiap objek.
-  - Truk diberi **kotak tebal** berwarna sesuai keadaannya beserta lamanya, misalnya "Dimuat 24 dtk".
-  - Excavator, bak terangkat, dan muatan diberi **kotak putus-putus**.
-  - Klik gambar untuk memperbesar. Tampilan besar terus diperbarui dan menampilkan keadaan tiap truk.
-  - Kartu tiap kamera menampilkan kecepatan proses serta CPU dan RAM yang dipakai kamera itu.
-  - Arti warnanya ada di **Keterangan warna kotak** di bawah daftar kamera.
-- **Deteksi terbaru**: foto, waktu, kamera, label, skor, dan durasi. Klik baris untuk melihat detailnya.
-- **Aktivitas truk**: jumlah truk yang sedang dimuat, dumping, idle, dan bergerak; sumber data, jumlah objek
-  terpantau, dan aktivitas tersimpan; bagian waktu tiap keadaan per kamera; tabel truk yang sedang terlihat;
-  dan daftar aktivitas terakhir.
-- **Grafik**: jumlah deteksi per label dan per kamera.
-
-### Warna kotak di gambar kamera
+### Kotak di gambar kamera
 
 | Kotak | Artinya |
 |---|---|
@@ -47,72 +77,55 @@ Urutannya dari atas ke bawah:
 | Putus-putus oranye | Bak terangkat |
 | Putus-putus abu-abu | Muatan (bermuatan atau kosong) |
 
-Kotak tebal adalah **kesimpulan backend** dari gerak truk dan objek di sekitarnya. Kotak putus-putus adalah
-**hasil deteksi model** secara langsung. Pilihan **Kotak di kamera → Deteksi Frigate** mengganti semuanya
-dengan kotak asli dari Frigate; arti warnanya ada di README proyek.
+Perlu dibedakan saat membacanya: kotak tebal adalah **kesimpulan backend** dari gerak truk dan objek di
+sekitarnya, sedangkan kotak putus-putus adalah **hasil deteksi model** secara langsung. Angka di belakang
+keadaan, misalnya "Dimuat 24 dtk", adalah lama truk berada di keadaan itu.
 
-## Menjalankan
+Pilihan **Kotak di kamera → Deteksi Frigate** mengganti semuanya dengan kotak asli dari Frigate — berguna
+untuk memeriksa hasil model apa adanya. Arti warnanya ada di [README proyek](../README.md).
 
-Frigate harus sudah jalan. Dari root repo:
+### Bila kotak keadaan tidak bisa digambar
 
-```bash
-FRIGATE_URL=http://localhost:8971 backend/.venv/bin/uvicorn backend.app.main:app --port 8000
-```
+Kotak keadaan butuh posisi objek terkini dari backend, dan posisi itu hanya datang lewat MQTT. Bila
+posisinya tidak tersedia, kamera otomatis memakai kotak asli Frigate dan catatan penyebabnya muncul di
+bagian Kamera, supaya gambar tidak pernah tampil polos tanpa penjelasan. Begitu datanya masuk, kotak
+keadaan kembali sendiri tanpa perlu memuat ulang halaman.
 
-Lalu buka **http://localhost:8000/dashboard/**.
+| Status di pojok kanan atas | Sebabnya | Yang perlu diperiksa |
+|---|---|---|
+| Aktivitas: menunggu data MQTT | Broker tersambung, tetapi backend belum menerima satu kabar pun padahal Frigate sedang melacak objek | `mqtt.host` di konfigurasi Frigate: di dalam Docker harus nama layanan broker (`mosquitto`), bukan `localhost` |
+| Aktivitas: MQTT tanpa data | Sama, dan sudah berlangsung lebih dari 3 menit | Sama; juga `mqtt.enabled` dan `topic_prefix` |
+| Aktivitas: tanpa MQTT | Backend tidak tersambung ke broker | Broker menyala dan port 1883 terbuka; `MQTT_HOST` pada backend |
 
-Backend otomatis menyajikan folder ini di `/dashboard/` bila foldernya ada. Kalau folder `Dashboard/`
-tidak ada, backend tetap jalan normal tanpa dashboard.
-
-Supaya keadaan truk (idle, dimuat, dumping) akurat, Frigate dan backend harus tersambung ke broker MQTT.
-Cara menyalakannya ada di `backend/README.md`.
-
-Kalau halaman dibuka dari tempat lain (misalnya file dibuka langsung), tentukan alamat backend lewat
-parameter `api`:
-
-```
-index.html?api=http://localhost:8000
-```
-
-Setelah file di folder ini diubah, muat ulang halaman dengan **Cmd + Shift + R** (Mac) atau **Ctrl + F5**
-(Windows), karena browser kadang masih memakai versi lama.
+Angka "objek terpantau" di bagian Aktivitas truk membantu memastikannya: bila tetap 0 sementara kamera
+jelas menampilkan truk, kabar dari Frigate memang tidak sampai.
 
 ## Catatan
 
-**Aktivitas truk**
-
-- **Idle, dimuat, dan dumping tidak terlihat di Frigate.** Keadaan ini disimpulkan backend dari posisi
-  truk tiap detik (lihat `backend/README.md`). Bila backend tidak tersambung ke MQTT, Dashboard menampilkan
-  peringatan kuning di bagian Aktivitas truk dan di bagian Kamera, karena letak kotak dan keadaannya bisa
-  tidak sesuai.
-- Bila broker MQTT tersambung tetapi Frigate tidak mengirim data (misalnya `mqtt.enabled` lupa
-  dinyalakan), status berubah menjadi "MQTT tanpa data" beserta peringatannya.
-- Grafik **waktu per keadaan** paling jauh mencakup 1 jam terakhir dan diperbarui tiap menit. Perhitungannya
-  berat bagi backend (di lokasi ramai sekitar 0,75 detik untuk 1 jam dan 4 detik untuk 6 jam, dan selama
-  itu backend tidak melayani permintaan lain), jadi tidak ikut diperbarui tiap 10 detik.
-- Pada video uji yang diputar berulang, lama idle atau dimuat bisa terus bertambah melebihi panjang videonya.
-  Itu wajar: truk yang diam di tempat yang sama dianggap Frigate sebagai truk yang sama.
-
-**CPU dan RAM**
-
-- Pil **CPU** dan **RAM** di atas adalah beban seluruh mesin tempat Frigate berjalan. Warnanya kuning mulai
-  70% dan merah mulai 90%. Bila Frigate berjalan di dalam Docker Desktop atau OrbStack, yang terukur adalah
-  mesin virtualnya, bukan seluruh komputer.
-- CPU per kamera dihitung dari **satu inti prosesor**, sama seperti halaman System di Frigate, jadi jumlah
-  semua kamera bisa lebih besar dari angka CPU mesin.
-
-**Lain-lain**
-
-- Angka pada grafik adalah **jumlah event Frigate** (objek yang dilacak), bukan jumlah kendaraan unik.
-  Truk yang diam lama bisa tercatat lebih dari satu event.
-- Filter **Label** hanya berlaku untuk tabel. Filter **Kamera** dan **Rentang waktu** berlaku untuk
-  semuanya.
-- Tombol **Jeda** menghentikan semua pembaruan. Pembaruan juga berhenti otomatis saat tab browser tidak
+- **Dimuat, dumping, dan idle tidak terlihat di Frigate.** Keadaan ini disimpulkan backend dari posisi
+  truk tiap detik (lihat `backend/README.md`), jadi hanya tampil di sini.
+- **Lama aktivitas menumpuk pada video uji yang diputar berulang.** Truk yang diam di tempat yang sama
+  dianggap Frigate sebagai truk yang sama, sehingga lama idle atau dimuat bisa melebihi panjang videonya.
+  Di kamera sungguhan hal ini tidak terjadi.
+- **Grafik waktu per keadaan dibatasi 1 jam terakhir dan diperbarui tiap menit.** Perhitungannya berat
+  bagi backend — di lokasi ramai sekitar 0,75 detik untuk 1 jam dan 4 detik untuk 6 jam, dan selama itu
+  backend tidak melayani permintaan lain — jadi tidak ikut diperbarui tiap 10 detik seperti data lainnya.
+- **CPU dan RAM adalah beban mesin tempat Frigate berjalan**, kuning mulai 70% dan merah mulai 90%. Bila
+  Frigate berjalan di Docker Desktop atau OrbStack, yang terukur adalah mesin virtualnya, bukan seluruh
+  komputer. CPU per kamera dihitung dari satu inti prosesor, sama seperti halaman System di Frigate, jadi
+  jumlahnya bisa lebih besar dari angka CPU mesin.
+- **Beban CPU bergantung pada detektornya.** Dengan detektor `onnx` di CPU (susunan Windows), 6 kamera
+  bisa memakai hampir seluruh inti dan sebagian frame terlewat; lewat Neural Engine di Mac bebannya
+  sekitar 11%. Angka "terlewat" di kartu tiap kamera menunjukkan frame yang tidak sempat diproses.
+- **Angka pada grafik adalah jumlah event Frigate**, bukan jumlah kendaraan unik. Truk yang diam lama
+  bisa tercatat lebih dari satu event.
+- **Foto pada tabel deteksi** memerlukan `snapshots.enabled: true` di konfigurasi Frigate. Tanpa itu
+  tabelnya tetap terisi, hanya tanpa foto.
+- Filter label hanya berlaku untuk tabel deteksi; filter kamera dan rentang waktu berlaku untuk semuanya.
+- Tombol jeda menghentikan semua pembaruan. Pembaruan juga berhenti sendiri saat tab browser tidak
   terlihat, supaya tidak membebani Frigate.
 - Bila Frigate atau backend mati, muncul pesan merah di atas dan dashboard pulih sendiri setelah
   layanannya menyala lagi.
-- Dashboard tetap berjalan dengan backend versi lama. Bagian yang datanya belum tersedia disesuaikan
-  sendiri: tanpa `/cameras/{kamera}/objects` kamera menampilkan kotak Frigate, dan tanpa data beban di
-  `/stats` pil CPU dan RAM disembunyikan.
-- Backend juga punya halaman pemantau lain di `/monitor/` (`backend/dashboard/`). Halaman itu berfokus pada
-  keadaan truk saat ini; Dashboard ini menambahkan ringkasan, grafik, riwayat deteksi, filter, dan beban mesin.
+- Dashboard tetap berjalan dengan backend versi lama. Bagian yang datanya belum tersedia menyesuaikan
+  sendiri: tanpa `/cameras/{camera}/objects` kamera memakai kotak Frigate, dan tanpa data beban di
+  `/stats` status CPU dan RAM disembunyikan.
