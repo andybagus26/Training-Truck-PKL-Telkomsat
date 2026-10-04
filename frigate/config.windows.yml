@@ -145,48 +145,4 @@ cameras:
     record:
       enabled: true
 
-  cctv5:
-    ffmpeg:
-      inputs:
-        - path: /config/cctv5.mp4
-          input_args: -re -stream_loop -1
-          roles:
-            - detect
-            - record
-    detect:
-      fps: 5
-      enabled: true
-    record:
-      enabled: true
-
-  cctv_truck4:
-    ffmpeg:
-      inputs:
-        - path: /config/cctv_truck4.mp4
-          input_args: -re -stream_loop -1
-          roles:
-            - detect
-            - record
-    detect:
-      fps: 5
-      enabled: true
-    record:
-      enabled: true
-
-  truck_cam_2:
-    ffmpeg:
-      inputs:
-        - path: /config/cctv_truck2.mp4
-          input_args: -re -stream_loop -1
-          roles:
-            - detect
-            - record
-    detect:
-      fps: 5
-      width: 1280
-      height: 720
-      enabled: true
-    record:
-      enabled: true
-
 version: 0.18-0
