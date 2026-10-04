@@ -29,10 +29,12 @@ ada, jadi cukup jalankan backend dari akar repositori:
 FRIGATE_URL=http://localhost:8971 backend/.venv/bin/python -m uvicorn backend.app.main:app --port 8000
 ```
 
-```powershell
-# Windows (PowerShell)
-$env:FRIGATE_URL = "http://localhost:5000"
-backend\.venv\Scripts\python -m uvicorn backend.app.main:app --port 8000
+```bash
+# Windows (WSL)
+FRIGATE_URL=http://localhost:5000 \
+MQTT_HOST=localhost \
+MQTT_PORT=1883 \
+backend/.venv/bin/uvicorn backend.app.main:app --port 8000
 ```
 
 Lalu buka **http://localhost:8000/dashboard/** (alamat `http://localhost:8000/` otomatis diarahkan ke
