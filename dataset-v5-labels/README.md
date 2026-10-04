@@ -3,6 +3,10 @@
 Folder ini berisi seluruh anotasi yang dipakai untuk melatih model v5, dalam format YOLO
 (`class cx cy w h`, nilai relatif 0–1), beserta `data.yaml` dan `manifest.csv`.
 
+Model v6 memakai anotasi yang sama sebagai dasarnya, ditambah class kelima `bed_raised` dari rekaman
+dumping. Anotasi tambahan itu disimpan terpisah di [`dataset-dump-labels/`](../dataset-dump-labels/)
+dan digabungkan oleh `scripts/build_dataset_v6.py`.
+
 **Gambarnya sengaja tidak disertakan.** Sebagian berasal dari frame video publik yang hak ciptanya
 dipegang pemilik kanal masing-masing, sehingga tidak layak didistribusikan ulang di sini. Gambar dari
 Roboflow (CC BY 4.0) juga tidak disertakan agar repositori tetap ringan — lebih baik diambil langsung
@@ -38,6 +42,8 @@ Daftar video lengkap beserta link ada di [`../docs/sumber-dataset.md`](../docs/s
    kolom `salinan` di `manifest.csv`.
 4. Letakkan gambar di `train/images`, `valid/images`, `test/images` di samping folder label, lalu
    sesuaikan baris `path` di `data.yaml`.
+5. Untuk dataset v6, jalankan `scripts/build_dataset_v6.py` setelah frame dumping diambil sesuai
+   petunjuk di [`dataset-dump-labels/`](../dataset-dump-labels/).
 
 Label di sini adalah hasil akhir setelah seluruh pemeriksaan manual, jadi tidak perlu mengulang proses
 review.
