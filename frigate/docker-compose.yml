@@ -2,16 +2,19 @@ version: "3.8"
 
 services:
   frigate:
-    image: frigate:0.18-0
+    # Image resmi, supaya bisa dijalankan di komputer mana pun (Windows, Mac, Linux). Untuk memakai image
+    # lain (misalnya image lokal), isi FRIGATE_IMAGE di file .env di folder ini, contoh:
+    #   FRIGATE_IMAGE=frigate:0.18-0
+    image: ${FRIGATE_IMAGE:-ghcr.io/blakeblackshear/frigate:0.17.1}
     container_name: frigate-truk
     restart: unless-stopped
     privileged: true
-    shm_size: "256m"
+    shm_size: "512m"   # 6 kamera: Frigate meminta minimal 288 MB, 256 MB memicu peringatan
     ports:
       - "5000:5000"
     volumes:
       - ./config.windows.yml:/config/config.yml:ro
-      - ./models:/models:ro
+      - ../models:/models:ro      # folder models/ di root repo
       - ./cctv_short.mp4:/config/cctv_short.mp4:ro
       - ./cctv5.mp4:/config/cctv5.mp4:ro
       - ./cctv_truck2.mp4:/config/cctv_truck2.mp4:ro
@@ -20,9 +23,7 @@ services:
       - ./cctv_truck4.mp4:/config/cctv_truck4.mp4:ro
       - frigate-recordings:/media/frigate/recordings
       - frigate-clips:/media/frigate/clips
-    environment:
-      - FRIGATE_MQTT_HOST=mosquitto
-      - FRIGATE_MQTT_PORT=1883
+    # Alamat broker MQTT diatur di config.windows.yml (mqtt.host: mosquitto), bukan lewat environment.
     networks:
       - frigate-net
 

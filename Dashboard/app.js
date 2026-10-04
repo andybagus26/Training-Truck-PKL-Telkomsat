@@ -51,6 +51,10 @@ const state = {
   boxes: "state",       // kotak di gambar kamera: "state" (keadaan truk) atau "frigate" (kotak bawaan Frigate)
   objectsMissing: false, // backend lama tanpa /cameras/{kamera}/objects
   mqttOk: null,
+  mqttConnected: null,
+  tracked: null,        // jumlah objek yang posisinya dipegang backend (dari MQTT)
+  ongoing: null,        // jumlah objek yang sedang dilacak Frigate
+  posOk: true,          // posisi dari backend bisa dipakai menggambar kotak keadaan
   zoom: null,           // kamera yang sedang diperbesar: { cam, view }
 };
 
@@ -324,7 +328,7 @@ async function fetchObjects(camName) {
 async function refreshView(view, camName, height, wantObjects) {
   if (view.loading) return null;
   view.loading = true;
-  const drawState = state.boxes === "state" && !state.objectsMissing;
+  const drawState = state.boxes === "state" && !state.objectsMissing && state.posOk;
   const src = apiUrl(`/cameras/${encodeURIComponent(camName)}/latest`, { height, bbox: !drawState, t: Date.now() });
   try {
     const [pre, objs] = await Promise.all([preload(src), wantObjects || drawState ? fetchObjects(camName) : null]);
@@ -376,14 +380,36 @@ function boxFor(o) {
   return node;
 }
 
+// Posisi objek dari backend bisa dipakai menggambar kotak keadaan? Tidak, bila MQTT bermasalah, atau backend
+// belum memegang satu objek pun padahal Frigate sedang melacak objek. Keadaan kedua terjadi bila Frigate tidak
+// bisa menghubungi broker (misalnya mqtt.host salah): backend tersambung tetapi tidak pernah menerima kabar.
+function positionsOk() {
+  if (state.mqttOk === false) return false;
+  return !(state.tracked === 0 && state.ongoing > 0);
+}
+
+// Menentukan kotak yang dipakai di gambar kamera dan catatan penjelasnya. Bila kotak keadaan tidak bisa
+// digambar, kamera memakai kotak asli Frigate supaya gambar tidak pernah tampil polos tanpa penjelasan.
 function updateBoxNote() {
+  const posOk = positionsOk();
+  if (posOk !== state.posOk) {
+    state.posOk = posOk;
+    for (const card of state.cards.values()) card.view.layer.replaceChildren();
+    if (state.zoom) state.zoom.view.layer.replaceChildren();
+    if (!state.paused) loadFrames();
+  }
   let msg = "";
   if (state.boxes === "state") {
     if (state.objectsMissing) {
       msg = "Backend ini belum bisa memberi posisi objek terkini (/cameras/{kamera}/objects), jadi kamera menampilkan " +
         "kotak Frigate. Perbarui backend untuk melihat keadaan truk di gambar.";
-    } else if (state.mqttOk === false) {
-      msg = "Backend tidak menerima posisi terkini lewat MQTT, jadi letak kotak dan keadaan truk di gambar bisa tidak sesuai.";
+    } else if (!posOk && state.mqttConnected === false) {
+      msg = "Backend tidak tersambung ke broker MQTT, jadi posisi objek terkini tidak tersedia dan kamera menampilkan " +
+        "kotak asli Frigate. Kotak keadaan truk muncul sendiri setelah MQTT tersambung.";
+    } else if (!posOk) {
+      msg = "Backend belum menerima posisi objek dari Frigate lewat MQTT, jadi kamera menampilkan kotak asli Frigate. " +
+        "Kotak keadaan truk muncul sendiri setelah datanya masuk. Bila terus begini, periksa mqtt.host di config " +
+        "Frigate: di dalam Docker isinya harus nama layanan broker (misalnya mosquitto), bukan localhost.";
     }
   }
   $("box-note").textContent = msg;
@@ -410,6 +436,11 @@ async function refreshZoom() {
   if (state.zoom !== z) return; // sudah ditutup atau ganti kamera
   if (state.objectsMissing) {
     $("cam-dialog-info").textContent = "Keadaan tiap truk butuh backend versi terbaru.";
+    return;
+  }
+  if (!state.posOk) {
+    $("cam-dialog-info").textContent = "Keadaan tiap truk belum tersedia; gambar memakai kotak Frigate.";
+    $("cam-dialog-trucks").replaceChildren();
     return;
   }
   if (!objs) return;
@@ -636,12 +667,21 @@ function renderPoller(p) {
     connected ? `${fmtInt(m.tracked_objects)} objek terpantau` : null,
     `${fmtInt(p.activities_in_db)} aktivitas tersimpan`,
   ].filter(Boolean).join(" · ");
-  if (state.mqttOk !== ok) { state.mqttOk = ok; updateBoxNote(); }
-  setPill("pill-mqtt", ok ? "ok" : "bad",
-    ok ? "Aktivitas: MQTT tersambung" : (silent ? "Aktivitas: MQTT tanpa data" : "Aktivitas: tanpa MQTT"));
+  state.mqttOk = ok;
+  state.mqttConnected = !!connected;
+  state.tracked = connected && typeof m.tracked_objects === "number" ? m.tracked_objects : null;
+  updateBoxNote();
+  // Tersambung, tetapi backend belum memegang satu objek pun padahal Frigate sedang melacak objek.
+  const waiting = ok && !state.posOk;
+  setPill("pill-mqtt", ok ? (waiting ? "warn" : "ok") : "bad",
+    ok ? (waiting ? "Aktivitas: menunggu data MQTT" : "Aktivitas: MQTT tersambung")
+      : (silent ? "Aktivitas: MQTT tanpa data" : "Aktivitas: tanpa MQTT"));
   const w = $("act-warning");
-  if (ok) { w.hidden = true; return; }
-  w.textContent = silent
+  if (ok && !waiting) { w.hidden = true; return; }
+  w.textContent = waiting
+    ? "Broker MQTT tersambung, tetapi backend belum menerima kabar dari Frigate padahal Frigate sedang melacak objek, " +
+      "jadi keadaan idle, dimuat, dan dumping belum bisa dinilai. Bila terus begini, periksa mqtt.host di config Frigate."
+    : silent
     ? (p.warning || "Broker MQTT tersambung, tetapi Frigate tidak mengirim data, jadi aktivitas tidak tercatat.")
     : "Backend tidak tersambung ke MQTT, jadi posisi truk yang dipakai bukan posisi terkini. " +
       "Keadaan idle, dimuat, dan dumping di bawah ini tidak bisa diandalkan sampai MQTT tersambung.";
@@ -694,6 +734,8 @@ async function refreshData() {
   if (seq !== state.seq) return false; // filter sudah berubah saat menunggu; hasil ini usang
   renderSummary(sum, ongoing.length);
   renderDetections(list);
+  state.ongoing = ongoing.length;
+  updateBoxNote();
   return true;
 }
 

@@ -1,6 +1,9 @@
 mqtt:
   enabled: true
-  host: localhost
+  # Nama layanan broker di docker-compose.yml, BUKAN localhost: di dalam container, localhost berarti
+  # container Frigate sendiri, sehingga Frigate tidak pernah tersambung ke broker dan backend tidak
+  # menerima posisi objek (kotak keadaan di Dashboard tidak muncul, aktivitas tidak tercatat).
+  host: mosquitto
   port: 1883
 
 # ─── DETECTOR ─────────────────────────────────────────────────────────────
@@ -53,6 +56,15 @@ objects:
     empty_load:
       min_score: 0.5
       threshold: 0.6
+
+# ─── SNAPSHOTS ────────────────────────────────────────────────────────────
+# Foto tiap deteksi. Tanpa ini tabel "Deteksi terbaru" di Dashboard tampil tanpa foto.
+# Disamakan dengan config.yml (Mac).
+snapshots:
+  enabled: true
+  bounding_box: true
+  retain:
+    default: 3
 
 # ─── RECORDING ────────────────────────────────────────────────────────────
 record:
