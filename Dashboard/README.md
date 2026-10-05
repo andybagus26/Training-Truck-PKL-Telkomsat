@@ -62,7 +62,7 @@ Setelah berkas di folder ini diubah, muat ulang halaman dengan Cmd + Shift + R (
 | Status | Backend, Frigate, kecepatan detektor, pemakaian CPU dan RAM, serta sambungan MQTT |
 | Filter | Rentang waktu, kamera, label, pilihan kotak di gambar kamera, dan tombol jeda |
 | Ringkasan | Total deteksi, jumlah truk, excavator, dan objek yang masih terlihat |
-| Kamera | Gambar terbaru tiap kamera (tiap 3 detik) dengan kotak di atas tiap objek; klik untuk memperbesar |
+| Kamera | Gambar terbaru tiap kamera (tiap detik) dengan kotak di atas tiap objek; klik untuk memperbesar |
 | Deteksi terbaru | Foto, waktu, kamera, label, skor, dan durasi; klik baris untuk detailnya |
 | Aktivitas truk | Jumlah truk per keadaan, bagian waktu tiap keadaan per kamera, truk yang sedang terlihat, dan aktivitas terakhir |
 | Grafik | Jumlah deteksi per label dan per kamera |

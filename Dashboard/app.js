@@ -11,7 +11,7 @@ const API = (() => {
 })();
 
 const INTERVAL_DATA = 10000;    // status, rekap, tabel
-const INTERVAL_FRAME = 3000;    // gambar kamera
+const INTERVAL_FRAME = 1000;    // gambar kamera; backend menilai keadaan truk tiap detik, jadi lebih cepat dari ini tidak menambah apa-apa
 const INTERVAL_CAMERAS = 60000; // daftar kamera jarang berubah
 const TIMEOUT_MS = 15000;
 const SUMMARY_LIMIT = 2000;     // batas maksimal /summary di backend
