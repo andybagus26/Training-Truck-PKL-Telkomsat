@@ -35,3 +35,7 @@ backend/data/
 # Bobot model umum yang diunduh otomatis saat percobaan (bukan bagian dari proyek)
 yolov8*.pt
 yolov9t.pt
+
+# Penyesuaian lokal untuk Mac (dibuat mengikuti panduan_mac.md bagian 10)
+frigate/config.mac.yml
+frigate/docker-compose.override.yml
